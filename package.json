@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "fetch-transit": "node scripts/fetch-and-clean-transit.js",
+    "fetch-transit:bootstrap": "node scripts/fetch-and-clean-transit.js --bootstrap"
   },
   "dependencies": {
     "maplibre-gl": "^4.7.1",

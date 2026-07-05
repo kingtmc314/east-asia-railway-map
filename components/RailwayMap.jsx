@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { feature } from 'topojson-client';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -9,7 +8,6 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const GLYPHS_FALLBACK = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 const LABEL_FONTS = ['Noto Sans CJK JP Regular', 'Open Sans Regular'];
-const LOAD_CONCURRENCY = 4;
 const SNAP_DEG = 0.004;
 
 const LINES_SOURCE = 'railway-lines';
@@ -67,11 +65,11 @@ const RAIL_TYPES = [
 ];
 
 const REGIONS = [
-  { id: 'hongkong', center: [114.1694, 22.3193], zoom: 10, files: ['/data/hongkong.topo.json'] },
-  { id: 'macau', center: [113.5439, 22.1987], zoom: 11, files: ['/data/macau.topo.json'] },
-  { id: 'taiwan', center: [121.0, 23.7], zoom: 8, files: ['/data/taiwan.topo.json'] },
-  { id: 'china', center: [116.4074, 39.9042], zoom: 5, manifestPrefix: 'china-' },
-  { id: 'japan', center: [138.2529, 36.2048], zoom: 6, manifestPrefix: 'japan-' },
+  { id: 'hongkong', center: [114.1694, 22.3193], zoom: 10, cleanFile: '/data/hongkong_clean.json' },
+  { id: 'macau', center: [113.5439, 22.1987], zoom: 11, cleanFile: '/data/macau_clean.json' },
+  { id: 'taiwan', center: [121.0, 23.7], zoom: 8, cleanFile: '/data/taiwan_clean.json' },
+  { id: 'china', center: [116.4074, 39.9042], zoom: 5, cleanMacro: 'china' },
+  { id: 'japan', center: [138.2529, 36.2048], zoom: 6, cleanMacro: 'japan' },
 ];
 
 const ALL_REGION_IDS = REGIONS.map((r) => r.id);
@@ -162,37 +160,46 @@ function toMacroRegion(regionId) {
 
 function classifyLine(props) {
   const p = props || {};
+  if (p.rail_type) return p.rail_type;
   if (p.line_tier === 'hsr' || p.is_hsr === 1 || p.highspeed === 'yes') return 'hsr';
-  if (p.line_tier === 'tram' || p.railway === 'tram') return 'tram';
+  if (p.line_tier === 'tram' || p.railway === 'tram' || p.railway === 'light_rail') return 'tram';
   if (p.line_tier === 'metro' || p.railway === 'subway') return 'subway';
   return 'rail';
 }
 
+/** Parse pre-cleaned static JSON or legacy FeatureCollection */
 function decodeRaw(raw, macroRegion) {
   let lines = [];
   let stations = [];
-  if (raw?.type === 'Topology' && raw.objects) {
-    lines = raw.objects.lines ? feature(raw, raw.objects.lines).features : [];
-    stations = raw.objects.stations ? feature(raw, raw.objects.stations).features : [];
-  } else {
+
+  if (Array.isArray(raw.lines)) lines = raw.lines;
+  else if (raw?.type === 'FeatureCollection') {
     for (const f of raw.features || []) {
       const t = f.geometry?.type;
       if (t === 'LineString' || t === 'MultiLineString') lines.push(f);
       else if (t === 'Point') stations.push(f);
     }
   }
-  const tag = (f) => ({
+
+  if (Array.isArray(raw.stations)) stations = raw.stations;
+
+  const tagLine = (f) => ({
     ...f,
     properties: {
       ...f.properties,
-      macro_region: macroRegion,
+      macro_region: f.properties?.macro_region || macroRegion,
       rail_type: classifyLine(f.properties),
+      line_color: f.properties?.line_color || f.properties?.color || f.properties?.colour,
     },
   });
-  return { lines: lines.map(tag), stations: stations.map((f) => ({
-    ...f,
-    properties: { ...f.properties, macro_region: macroRegion },
-  })) };
+
+  return {
+    lines: lines.map(tagLine),
+    stations: stations.map((f) => ({
+      ...f,
+      properties: { ...f.properties, macro_region: f.properties?.macro_region || macroRegion },
+    })),
+  };
 }
 
 function* iterLineCoords(geometry) {
@@ -245,7 +252,7 @@ function mergeFeatures(existing, incoming) {
   return out;
 }
 
-async function fetchTopo(url) {
+async function fetchCleanJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -380,6 +387,7 @@ function CheckChip({ checked, onChange, label, color }) {
 export default function RailwayMap() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
+  const manifestRef = useRef(null);
   const dataRef = useRef({ lines: [], stations: [] });
   const loadedRef = useRef(new Set());
   const layersReadyRef = useRef(false);
@@ -388,7 +396,7 @@ export default function RailwayMap() {
   const [dataReady, setDataReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [locale, setLocale] = useState('zh');
-  const [selectedRegions, setSelectedRegions] = useState(['hongkong', 'taiwan']);
+  const [selectedRegions, setSelectedRegions] = useState(['hongkong']);
   const [selectedTypes, setSelectedTypes] = useState(ALL_TYPE_IDS);
   const [zoomLevel, setZoomLevel] = useState(5);
 
@@ -440,56 +448,86 @@ export default function RailwayMap() {
     }
   }, [locale]);
 
-  const loadAllData = useCallback(async () => {
-    let manifest = null;
-    try {
-      manifest = await (await fetch('/data/manifest.json')).json();
-    } catch { /* optional */ }
+  const loadRegion = useCallback(async (regionId) => {
+    const region = REGIONS.find((r) => r.id === regionId);
+    if (!region) return;
+
+    const manifest = manifestRef.current
+      || await fetchCleanJson('/data/clean-manifest.json').then((m) => {
+        manifestRef.current = m;
+        return m;
+      }).catch(() => null);
 
     const jobs = [];
-    for (const region of REGIONS) {
-      if (region.files) {
-        for (const file of region.files) jobs.push({ file, macro: region.id, key: file });
-      } else if (region.manifestPrefix && manifest) {
-        for (const entry of manifest.regions.filter((r) => r.id.startsWith(region.manifestPrefix))) {
-          jobs.push({ file: entry.file, macro: region.id, key: entry.id });
+    if (region.cleanFile) {
+      if (!loadedRef.current.has(region.cleanFile)) {
+        jobs.push({ url: region.cleanFile, key: region.cleanFile, macro: regionId });
+      }
+    } else if (region.cleanMacro && manifest?.files) {
+      for (const entry of manifest.files.filter((f) => f.macro === region.cleanMacro)) {
+        if (!loadedRef.current.has(entry.file)) {
+          jobs.push({ url: entry.file, key: entry.file, macro: regionId });
         }
       }
     }
 
-    const pending = jobs.filter((j) => !loadedRef.current.has(j.key));
-    if (!pending.length) return;
+    if (!jobs.length) return;
 
-    let done = 0;
-    const queue = [...pending];
-    const workers = Array.from({ length: Math.min(LOAD_CONCURRENCY, queue.length) }, async () => {
-      while (queue.length) {
-        const job = queue.shift();
-        if (!job) break;
+    await Promise.all(
+      jobs.map(async (job) => {
+        loadedRef.current.add(job.key);
         try {
-          const raw = await fetchTopo(job.file);
+          const raw = await fetchCleanJson(job.url);
           const { lines, stations } = decodeRaw(raw, job.macro);
           dataRef.current.lines = mergeFeatures(dataRef.current.lines, lines);
           dataRef.current.stations = mergeFeatures(dataRef.current.stations, stations);
-          loadedRef.current.add(job.key);
         } catch (err) {
-          console.warn(`skip ${job.file}:`, err.message);
+          loadedRef.current.delete(job.key);
+          console.warn(`skip ${job.url}:`, err.message);
+        }
+      })
+    );
+  }, []);
+
+  const loadRegions = useCallback(
+    async (regionIds) => {
+      const needsLoad = regionIds.some((id) => {
+        const region = REGIONS.find((r) => r.id === id);
+        if (!region) return false;
+        if (region.cleanFile) return !loadedRef.current.has(region.cleanFile);
+        if (region.cleanMacro && manifestRef.current?.files) {
+          return manifestRef.current.files
+            .filter((f) => f.macro === region.cleanMacro)
+            .some((f) => !loadedRef.current.has(f.file));
+        }
+        return true;
+      });
+
+      if (!needsLoad && !regionIds.length) return;
+
+      let done = 0;
+      const total = regionIds.length;
+      for (const id of regionIds) {
+        try {
+          await loadRegion(id);
+        } catch {
+          /* logged */
         }
         done += 1;
-        setLoadProgress(Math.round((done / pending.length) * 100));
+        setLoadProgress(Math.round((done / Math.max(total, 1)) * 100));
         const map = mapRef.current;
         if (map?.isStyleLoaded()) pushDataToMap(map);
       }
-    });
 
-    await Promise.all(workers);
-    setDataReady(true);
-    const map = mapRef.current;
-    if (map?.isStyleLoaded()) {
-      pushDataToMap(map);
-      applyMatrix(map, selectedRegions, selectedTypes);
-    }
-  }, [pushDataToMap, applyMatrix, selectedRegions, selectedTypes]);
+      setDataReady(loadedRef.current.size > 0);
+      const map = mapRef.current;
+      if (map?.isStyleLoaded()) {
+        pushDataToMap(map);
+        applyMatrix(map, selectedRegions, selectedTypes);
+      }
+    },
+    [loadRegion, pushDataToMap, applyMatrix, selectedRegions, selectedTypes]
+  );
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -497,8 +535,8 @@ export default function RailwayMap() {
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: MAP_STYLE,
-      center: [121.5, 24.5],
-      zoom: 5,
+      center: [114.1694, 22.3193],
+      zoom: 10,
       minZoom: 2,
       maxZoom: 18,
       fadeDuration: 0,
@@ -510,8 +548,10 @@ export default function RailwayMap() {
 
     map.on('load', () => {
       ensureGlyphs(map);
+      fetchCleanJson('/data/clean-manifest.json')
+        .then((m) => { manifestRef.current = m; })
+        .catch(() => {});
       setMapReady(true);
-      loadAllData();
     });
     map.on('zoom', () => setZoomLevel(Math.round(map.getZoom() * 10) / 10));
 
@@ -521,7 +561,22 @@ export default function RailwayMap() {
       mapRef.current = null;
       layersReadyRef.current = false;
     };
-  }, [loadAllData]);
+  }, []);
+
+  /* Load clean JSON for each selected region (lazy, static files only) */
+  useEffect(() => {
+    if (!mapReady) return;
+    setLoadProgress(0);
+    loadRegions(selectedRegions);
+  }, [selectedRegions, mapReady, loadRegions]);
+
+  /* Fly to region when first selected */
+  const flyToRegion = useCallback((regionId) => {
+    const map = mapRef.current;
+    const region = REGIONS.find((r) => r.id === regionId);
+    if (!map || !region) return;
+    map.flyTo({ center: region.center, zoom: region.zoom, duration: 1200, essential: true });
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -536,9 +591,11 @@ export default function RailwayMap() {
   }, [selectedRegions, selectedTypes, applyMatrix, dataReady]);
 
   const toggleRegion = (id) => {
-    setSelectedRegions((prev) =>
-      prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
-    );
+    setSelectedRegions((prev) => {
+      const next = prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id];
+      if (!prev.includes(id)) flyToRegion(id);
+      return next;
+    });
   };
 
   const toggleType = (id) => {
