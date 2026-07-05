@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * East Asia Railway — zero-recursion Overpass pipeline (v5).
- * Uses way(r.routes) + out tags geom — NO >; NO out body.
+ * East Asia Railway — way-only Overpass pipeline (v6).
+ * Direct way + node fetch — NO relations, NO >;, NO out body.
  *
  *   node scripts/fetch-and-clean-transit.js
  *   node scripts/fetch-and-clean-transit.js --region=macau
@@ -15,20 +15,18 @@ const { feature } = require('topojson-client');
 
 const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'public', 'data');
-const USER_AGENT = 'east-asia-railway-map/5.0 (github.com/kingtmc314/east-asia-railway-map)';
+const USER_AGENT = 'east-asia-railway-map/6.0 (github.com/kingtmc314/east-asia-railway-map)';
 const REGION_PAUSE_MS = 10000;
 const TILE_PAUSE_MS = 10000;
-const MAX_SHARD_MB = 2.2;
+const MAX_SHARD_MB = 1.2;
 
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ];
 
-const ROUTE_RE = /^(train|subway|light_rail|tram|monorail)$/;
-const STOP_ROLES = /^(stop|stop_entry_only|station|platform)$/;
 const RAIL_WAYS = /^(rail|subway|tram|light_rail|monorail|narrow_gauge)$/;
-const SKIP_SERVICE = new Set(['siding', 'yard', 'spur', 'crossover']);
+const SKIP_SERVICE = /yard|siding|spur|switch|crossover/i;
 
 const TYPE_COLOR = {
   highspeed: '#E60012',
@@ -45,15 +43,37 @@ const REGION_COLOR = {
   japan: { highspeed: '#E60012', rail: '#006633', subway: '#009944', tram: '#FF8800' },
 };
 
+const OPERATOR_RULES = [
+  { re: /mtr|港鐵|mass transit railway/i, color: '#E3002C', type: 'subway' },
+  { re: /kcr|九廣|九广|east rail/i, color: '#5EB6E4', type: 'rail' },
+  { re: /macao lrt|澳門輕軌|澳门轻轨|mlm|metro ligeiro/i, color: '#9B1096', type: 'tram' },
+  { re: /jr east|東日本|东日本|jreast/i, color: '#2E8B57', type: 'rail' },
+  { re: /jr central|東海|东海|jrcentral/i, color: '#FF6600', type: 'rail' },
+  { re: /jr west|西日本|jrwest/i, color: '#0072BC', type: 'rail' },
+  { re: /jr hokkaido|北海道/i, color: '#00A040', type: 'rail' },
+  { re: /jr kyushu|九州/i, color: '#E60012', type: 'rail' },
+  { re: /tokyo metro|東京メトロ|东京地铁/i, color: '#009944', type: 'subway' },
+  { re: /toei|都営/i, color: '#00A040', type: 'subway' },
+  { re: /osaka metro|大阪メトロ|大阪地铁/i, color: '#E44D2E', type: 'subway' },
+  { re: /crh|china railway high|高铁|高鐵|中国国家铁路.*高速/i, color: '#E60012', type: 'highspeed' },
+  { re: /beijing subway|北京地铁|北京地鐵|bjsubway/i, color: '#009BC0', type: 'subway' },
+  { re: /shanghai metro|上海地铁|上海地鐵/i, color: '#E3002C', type: 'subway' },
+  { re: /guangzhou metro|广州地铁|廣州地鐵/i, color: '#F08300', type: 'subway' },
+  { re: /shenzhen metro|深圳地铁|深圳地鐵/i, color: '#00A040', type: 'subway' },
+  { re: /mrt|台北捷運|台北捷运|taoyuan metro|桃園捷運/i, color: '#007748', type: 'subway' },
+  { re: /thsr|台灣高鐵|台湾高铁|taiwan high speed/i, color: '#FF6600', type: 'highspeed' },
+  { re: /tra|台灣鐵路|台湾铁路|taiwan railway/i, color: '#003366', type: 'rail' },
+];
+
 const TOLERANCE = {
-  hongkong: 0.00006, macau: 0.00005, taiwan: 0.0001,
-  china: 0.002, japan: 0.0012, default: 0.00012,
+  hongkong: 0.00006, macau: 0.00005, taiwan: 0.00012,
+  china: 0.003, japan: 0.002, default: 0.00015,
 };
 
 const KEEP = new Set([
   'name', 'name:en', 'name:zh', 'name:zh-Hant', 'name:zh-HK', 'name:zh-TW', 'name:ja',
   'railway', 'color', 'colour', 'ref_colour', 'highspeed', 'bullet_train',
-  'operator', 'network', 'route', 'station', 'subway', 'train', 'tram', 'light_rail',
+  'operator', 'network', 'ref',
 ]);
 
 const REGIONS = {
@@ -62,7 +82,7 @@ const REGIONS = {
     bboxes: [[22.15, 113.83, 22.57, 114.45]],
   },
   macau: {
-    iso: 'MO', file: 'macau_clean.json', merged: true, forceBbox: true,
+    iso: null, file: 'macau_clean.json', merged: true,
     bboxes: [[22.05, 113.51, 22.23, 113.65]],
   },
   taiwan: {
@@ -70,7 +90,7 @@ const REGIONS = {
     bboxes: [[21.9, 119.3, 25.3, 122.0]],
   },
   china: {
-    iso: 'CN', merged: false, forceBbox: true,
+    iso: null, merged: false,
     bboxes: [
       { slug: 'china-anhui', bbox: [29.0, 114.0, 35.0, 119.0] },
       { slug: 'china-beijing', bbox: [39.4, 115.4, 41.1, 117.5] },
@@ -111,7 +131,7 @@ const REGIONS = {
     ],
   },
   japan: {
-    iso: 'JP', merged: false, forceBbox: true,
+    iso: null, merged: false,
     bboxes: [
       { slug: 'japan-hokkaido', bbox: [41.0, 139.0, 45.9, 146.0] },
       { slug: 'japan-tohoku', bbox: [36.0, 137.0, 41.5, 141.5] },
@@ -122,6 +142,9 @@ const REGIONS = {
     ],
   },
 };
+
+const WAY_SEL = 'way["railway"~"rail|subway|light_rail|tram|monorail"]["service"!~"yard|siding|spur|switch"]["abandoned"!="yes"]["construction"!="yes"]';
+const NODE_SEL = 'node["railway"~"station|halt|tram_stop"]';
 
 const round5 = (n) => parseFloat(Number(n).toFixed(5));
 const roundCoords = (c) => c.map(([x, y]) => [round5(x), round5(y)]);
@@ -177,43 +200,46 @@ const normColor = (raw) => {
 
 const blob = (t) => `${t.operator || ''}${t.network || ''}${t.name || ''}${t.ref || ''}`.toLowerCase();
 
+function matchOperator(t) {
+  const hay = blob(t);
+  for (const rule of OPERATOR_RULES) {
+    if (rule.re.test(hay)) return rule;
+  }
+  return null;
+}
+
 function isHighspeed(t) {
   if (t.highspeed === 'yes' || t.bullet_train === 'yes') return true;
   return /高铁|高鐵|shinkansen|新幹線|high.?speed|hsr|crh|bullet|台湾高铁|台灣高鐵/.test(blob(t));
 }
 
-function routeType(route, t) {
-  if (route === 'subway') return 'subway';
-  if (route === 'light_rail' || route === 'tram' || route === 'monorail') return 'tram';
-  if (route === 'train') return isHighspeed(t) ? 'highspeed' : 'rail';
-  return 'rail';
-}
-
-function classifyStation(t, macro, inherited) {
-  if (inherited) return inherited;
-  if (isHighspeed(t)) return 'highspeed';
-  if (t.railway === 'subway' || t.station === 'subway' || t.subway === 'yes') return 'subway';
-  if (/subway|metro|mtr|地下鐵|地下铁|捷運|捷运|地铁|轨道交通|都営|東京メトロ|东京地下|toei|地下鉄/.test(blob(t))) return 'subway';
-  if (t.railway === 'tram' || t.railway === 'light_rail' || t.tram === 'yes' || t.light_rail === 'yes') return 'tram';
-  if (/light.?rail|輕軌|轻轨|tram|路面電|路面电/.test(blob(t))) return 'tram';
-  if (macro === 'china' && /高铁站|高鐵站|客运|火车站/.test(`${t.name || ''}`)) return isHighspeed(t) ? 'highspeed' : 'rail';
-  return 'rail';
-}
-
-function classifyWay(t, inherited) {
-  if (inherited) return inherited;
+function classifyWay(t) {
+  const op = matchOperator(t);
+  if (op?.type) return op.type;
   if (t.railway === 'subway') return 'subway';
   if (t.railway === 'tram' || t.railway === 'light_rail' || t.railway === 'monorail') return 'tram';
   if (isHighspeed(t)) return 'highspeed';
   return 'rail';
 }
 
-function resolveColor(type, macro, t, inherited) {
-  return inherited
-    || normColor(t.colour || t.color || t.ref_colour)
-    || REGION_COLOR[macro]?.[type]
-    || TYPE_COLOR[type]
-    || '#888888';
+function classifyStation(t, macro) {
+  const op = matchOperator(t);
+  if (op?.type) return op.type;
+  if (isHighspeed(t)) return 'highspeed';
+  if (t.railway === 'subway' || t.station === 'subway' || t.subway === 'yes') return 'subway';
+  if (/subway|metro|mtr|地下鐵|地下铁|捷運|捷运|地铁|轨道交通|都営|東京メトロ|东京地下|toei|地下鉄/.test(blob(t))) return 'subway';
+  if (t.railway === 'tram' || t.railway === 'tram_stop' || t.tram === 'yes' || t.light_rail === 'yes') return 'tram';
+  if (/light.?rail|輕軌|轻轨|tram|路面電|路面电/.test(blob(t))) return 'tram';
+  if (macro === 'china' && /高铁站|高鐵站|客运|火车站/.test(`${t.name || ''}`)) return isHighspeed(t) ? 'highspeed' : 'rail';
+  return 'rail';
+}
+
+function resolveColor(type, macro, t) {
+  const op = matchOperator(t);
+  if (op?.color) return op.color;
+  const tag = normColor(t.colour || t.color || t.ref_colour);
+  if (tag) return tag;
+  return REGION_COLOR[macro]?.[type] || TYPE_COLOR[type] || '#888888';
 }
 
 function names(t, fallback) {
@@ -229,49 +255,32 @@ function names(t, fallback) {
   return p;
 }
 
-function buildInheritance(relations) {
-  const wayMeta = new Map();
-  const nodeMeta = new Map();
-  for (const rel of relations) {
-    const route = rel.tags?.route;
-    if (!route || !ROUTE_RE.test(route)) continue;
-    const railway_type = routeType(route, rel.tags);
-    const color = normColor(rel.tags.colour || rel.tags.color || rel.tags.ref_colour);
-    const line_name = rel.tags.name || rel.tags['name:en'] || rel.tags.ref || null;
-    const meta = { railway_type, color, line_name, relation_id: rel.id };
-    for (const m of rel.members || []) {
-      if (m.type === 'way') {
-        const prev = wayMeta.get(m.ref);
-        wayMeta.set(m.ref, { ...meta, railway_type: prev?.railway_type || railway_type, color: prev?.color || color });
-      }
-      if (m.type === 'node' && STOP_ROLES.test(m.role || 'stop')) {
-        const prev = nodeMeta.get(m.ref);
-        nodeMeta.set(m.ref, { ...meta, railway_type: prev?.railway_type || railway_type, color: prev?.color || color });
-      }
-    }
-  }
-  return { wayMeta, nodeMeta };
+function isJunkWay(t) {
+  if (t.abandoned === 'yes' || t.construction === 'yes' || t.disused === 'yes') return true;
+  if (t.service && SKIP_SERVICE.test(t.service)) return true;
+  if (t.usage === 'industrial' || t.usage === 'military') return true;
+  return false;
 }
 
-function lineProps(t, macro, el, meta) {
-  const railway_type = classifyWay(t, meta?.railway_type);
-  const color = resolveColor(railway_type, macro, t, meta?.color);
-  const line_name = meta?.line_name || t.name || t.ref || null;
+function hasIdentity(t) {
+  return !!(t.name || t['name:en'] || t['name:zh'] || t.ref || t.operator || t.network);
+}
+
+function lineProps(t, macro, el) {
+  const railway_type = classifyWay(t);
+  const color = resolveColor(railway_type, macro, t);
+  const line_name = t.name || t.ref || t.network || null;
   return {
-    osm_id: el.id, osm_type: el.type === 'relation' ? 'relation' : 'way',
-    macro_region: macro, railway_type, color, line_name,
-    relation_id: meta?.relation_id || (el.type === 'relation' ? el.id : null),
-    ...names(t, line_name),
+    osm_id: el.id, osm_type: 'way', macro_region: macro,
+    railway_type, color, line_name, ...names(t, line_name),
   };
 }
 
-function stationProps(t, macro, el, meta) {
-  const railway_type = classifyStation(t, macro, meta?.railway_type);
+function stationProps(t, macro, el) {
+  const railway_type = classifyStation(t, macro);
   return {
     osm_id: el.id, osm_type: 'node', macro_region: macro, railway_type,
-    ...(meta?.line_name ? { line_name: meta.line_name } : {}),
-    ...(meta?.color ? { color: meta.color } : {}),
-    ...names(t),
+    color: resolveColor(railway_type, macro, t), ...names(t),
   };
 }
 
@@ -280,83 +289,44 @@ function geomToCoords(geometry) {
   return geometry.map((g) => [round5(g.lon), round5(g.lat)]);
 }
 
-function relationSegments(rel, macro, tol) {
-  const t = rel.tags || {};
-  const route = t.route;
-  if (!route || !ROUTE_RE.test(route)) return [];
-  const railway_type = routeType(route, t);
-  const color = resolveColor(railway_type, macro, t, normColor(t.colour || t.color || t.ref_colour));
-  const line_name = t.name || t['name:en'] || t.ref || null;
-  const meta = { railway_type, color, line_name, relation_id: rel.id };
-  const props = lineProps(pick(t), macro, rel, meta);
-
-  if (!rel.geometry?.length) return [];
-  const coords = geomToCoords(rel.geometry);
-  if (coords.length < 2) return [];
-
-  const simplified = simplify(coords, tol);
-  if (simplified.length < 2 || lenSq(simplified) < 1e-8) return [];
-
-  return [{
-    type: 'Feature',
-    geometry: { type: 'LineString', coordinates: simplified },
-    properties: props,
-  }];
-}
-
 function osmToFeatures(elements, macro) {
   const tol = TOLERANCE[macro] || TOLERANCE.default;
-  const relations = elements.filter((e) => e.type === 'relation');
-  const { wayMeta, nodeMeta } = buildInheritance(relations);
+  const strict = macro === 'china' || macro === 'japan';
   const lines = [];
   const stations = [];
   const seenL = new Set();
   const seenN = new Set();
 
-  for (const rel of relations) {
-    for (const seg of relationSegments(rel, macro, tol)) {
-      const key = `relation/${rel.id}/${seg.geometry.coordinates[0]?.join(',')}`;
-      if (seenL.has(key)) continue;
-      seenL.add(key);
-      lines.push(seg);
-    }
-  }
-
   for (const el of elements) {
     if (el.type === 'way') {
-      const meta = wayMeta.get(el.id);
       const t = el.tags || {};
-      if (!meta && !(t.railway && RAIL_WAYS.test(t.railway))) continue;
-      if (SKIP_SERVICE.has(t.service)) continue;
-      if (!el.geometry?.length || seenL.has(`way/${el.id}`)) continue;
+      if (!t.railway || !RAIL_WAYS.test(t.railway)) continue;
+      if (isJunkWay(t)) continue;
+      if (strict && !hasIdentity(t)) continue;
+      if (!el.geometry?.length || seenL.has(el.id)) continue;
       const coords = simplify(geomToCoords(el.geometry), tol);
       if (coords.length < 2 || lenSq(coords) < 1e-8) continue;
-      seenL.add(`way/${el.id}`);
+      seenL.add(el.id);
       lines.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: coords },
-        properties: lineProps(pick(t), macro, el, meta),
+        properties: lineProps(pick(t), macro, el),
       });
     }
 
     if (el.type === 'node') {
-      const meta = nodeMeta.get(el.id);
       const t = el.tags || {};
-      const isStop = !!meta;
-      const isSta = /^(station|halt|tram_stop)$/.test(t.railway || '');
-      if (!isStop && !isSta) continue;
+      if (!/^(station|halt|tram_stop)$/.test(t.railway || '')) continue;
       if (seenN.has(el.id)) continue;
       const lon = el.lon ?? el.geometry?.[0];
       const lat = el.lat ?? el.geometry?.[1];
       if (lon == null || lat == null) continue;
-      if (!isStop && !['hongkong', 'macau', 'taiwan'].includes(macro)) {
-        if (!t.name && !t['name:en'] && !t['name:zh']) continue;
-      }
+      if (strict && !hasIdentity(t)) continue;
       seenN.add(el.id);
       stations.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [round5(lon), round5(lat)] },
-        properties: stationProps(pick(t), macro, el, meta),
+        properties: stationProps(pick(t), macro, el),
       });
     }
   }
@@ -374,38 +344,21 @@ function dedup(features) {
   });
 }
 
-/**
- * Zero-recursion Overpass QL.
- * way(r.routes) fetches ONLY route-member ways (no constituent nodes dump).
- * out tags geom — cloud-fused geometry, NO >; NO out body.
- */
-function buildQuery({ iso, bbox, forceBbox }) {
-  const routeSel = 'relation["type"="route"]["route"~"train|subway|light_rail|tram|monorail"]';
-  const nodeSel = 'node["railway"~"station|halt|tram_stop"]';
-
-  if (!forceBbox && iso) {
-    return `[out:json][timeout:300];
+function buildQuery({ iso, bbox }) {
+  if (iso) {
+    return `[out:json][timeout:180];
 area["ISO3166-1"="${iso}"]->.searchArea;
-${routeSel}(area.searchArea)->.routes;
-way(r.routes);
-${nodeSel}(area.searchArea);
 (
-  .routes;
-  way(r.routes);
-  ${nodeSel}(area.searchArea);
+  ${WAY_SEL}(area.searchArea);
+  ${NODE_SEL}(area.searchArea);
 );
 out tags geom;`;
   }
-
   const [s, w, n, e] = bbox;
-  return `[out:json][timeout:300];
-${routeSel}(${s},${w},${n},${e})->.routes;
-way(r.routes);
-${nodeSel}(${s},${w},${n},${e});
+  return `[out:json][timeout:180];
 (
-  .routes;
-  way(r.routes);
-  ${nodeSel}(${s},${w},${n},${e});
+  ${WAY_SEL}(${s},${w},${n},${e});
+  ${NODE_SEL}(${s},${w},${n},${e});
 );
 out tags geom;`;
 }
@@ -414,10 +367,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function curlQuery(url, query) {
   const out = execFileSync('curl', [
-    '-sfS', '--max-time', '300', '-A', USER_AGENT,
+    '-sfS', '--max-time', '180', '-A', USER_AGENT,
     '-X', 'POST', '-H', 'Content-Type: application/x-www-form-urlencoded',
     '--data-urlencode', `data=${query}`, url,
-  ], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  ], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
   return JSON.parse(out).elements || [];
 }
 
@@ -437,12 +390,15 @@ async function overpass(query, attempt = 0) {
 }
 
 async function fetchTile(def, bbox) {
-  const query = buildQuery({
-    iso: def.forceBbox ? null : def.iso,
-    bbox,
-    forceBbox: def.forceBbox || def.iso === 'MO',
-  });
-  return overpass(query);
+  return overpass(buildQuery({ iso: def.iso || null, bbox }));
+}
+
+function shrinkLines(lines, macro, factor) {
+  const tol = (TOLERANCE[macro] || 0.001) * factor;
+  return lines.map((f) => ({
+    ...f,
+    geometry: { type: 'LineString', coordinates: simplify(f.geometry.coordinates, tol) },
+  }));
 }
 
 function writeShard(relPath, regionId, macro, lines, stations, source = 'overpass') {
@@ -451,27 +407,21 @@ function writeShard(relPath, regionId, macro, lines, stations, source = 'overpas
   const outPath = path.join(OUT_DIR, relPath);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
-  let payload = JSON.stringify({
-    type: 'FeatureCollection', version: 5, region: regionId, macro_region: macro,
+  const pack = (lns) => JSON.stringify({
+    type: 'FeatureCollection', version: 6, region: regionId, macro_region: macro,
     updated: new Date().toISOString(), source,
-    features: [...dl, ...ds], lines: dl, stations: ds,
-    stats: { lines: dl.length, stations: ds.length },
+    features: [...lns, ...ds], lines: lns, stations: ds,
+    stats: { lines: lns.length, stations: ds.length },
   });
 
+  let payload = pack(dl);
   let mb = payload.length / (1024 * 1024);
-  if (mb > MAX_SHARD_MB) {
-    const tol = (TOLERANCE[macro] || 0.001) * 2.5;
-    dl = dl.map((f) => ({
-      ...f,
-      geometry: { type: 'LineString', coordinates: simplify(f.geometry.coordinates, tol) },
-    }));
-    payload = JSON.stringify({
-      type: 'FeatureCollection', version: 5, region: regionId, macro_region: macro,
-      updated: new Date().toISOString(), source,
-      features: [...dl, ...ds], lines: dl, stations: ds,
-      stats: { lines: dl.length, stations: ds.length },
-    });
+  let factor = 2;
+  while (mb > MAX_SHARD_MB && factor <= 8) {
+    dl = shrinkLines(dl, macro, factor);
+    payload = pack(dl);
     mb = payload.length / (1024 * 1024);
+    factor += 1;
   }
 
   fs.writeFileSync(outPath, payload);
@@ -491,12 +441,13 @@ function topoToFeatures(raw, macro, tol) {
 
   for (const f of lf.features || []) {
     const rw = f.properties?.railway;
-    if (!rw || !RAIL_WAYS.test(rw) || SKIP_SERVICE.has(f.properties?.service)) continue;
+    if (!rw || !RAIL_WAYS.test(rw)) continue;
+    if (SKIP_SERVICE.test(f.properties?.service || '')) continue;
     const t = pick(f.properties);
     const legacy = f.properties?.railway_type;
     const mapped = legacy === 'hsr' ? 'highspeed' : legacy;
-    const railway_type = mapped || classifyWay({ ...t, railway: rw }, null);
-    const color = resolveColor(railway_type, macro, t, normColor(f.properties?.color));
+    const railway_type = mapped || classifyWay({ ...t, railway: rw });
+    const color = resolveColor(railway_type, macro, t) || normColor(f.properties?.color);
     const fake = { id: f.properties?.osm_id, type: 'way' };
     const push = (seg) => {
       const c = simplify(seg, tol);
@@ -504,9 +455,7 @@ function topoToFeatures(raw, macro, tol) {
       lines.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: c },
-        properties: lineProps({ ...t, railway: rw }, macro, fake, {
-          railway_type, color, line_name: f.properties?.line_name || t.name,
-        }),
+        properties: lineProps({ ...t, railway: rw }, macro, fake),
       });
     };
     if (f.geometry?.type === 'MultiLineString') f.geometry.coordinates.forEach(push);
@@ -522,18 +471,14 @@ function topoToFeatures(raw, macro, tol) {
     stations.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [round5(c[0]), round5(c[1])] },
-      properties: stationProps(t, macro, { id: f.properties?.osm_id }, {
-        railway_type: mapped || classifyStation(t, macro, null),
-        line_name: f.properties?.line_name,
-        color: normColor(f.properties?.color),
-      }),
+      properties: stationProps(t, macro, { id: f.properties?.osm_id }),
     });
   }
   return { lines, stations };
 }
 
 async function fetchRegion(id, def) {
-  console.log(`\n▶ ${id} (${def.bboxes.length} tile(s)) — zero-recursion geom`);
+  console.log(`\n▶ ${id} (${def.bboxes.length} tile(s)) — way-only geom`);
   const results = [];
   const acc = { lines: [], stations: [] };
   let ok = false;
@@ -607,7 +552,7 @@ function writeManifest(results) {
   const byFile = new Map((prev.files || []).map((f) => [f.file, f]));
   for (const f of files) byFile.set(f.file, f);
   fs.writeFileSync(manifestPath, JSON.stringify({
-    version: 5, updated: new Date().toISOString(), files: [...byFile.values()],
+    version: 6, updated: new Date().toISOString(), files: [...byFile.values()],
   }, null, 2));
   console.log(`\n✓ manifest — ${byFile.size} file(s)`);
 }
@@ -620,7 +565,7 @@ async function main() {
   const targets = only ? { [only]: REGIONS[only] } : REGIONS;
   if (only && !REGIONS[only]) { console.error(`Unknown: ${only}`); process.exit(1); }
 
-  console.log('East Asia Railway — zero-recursion out tags geom pipeline v5');
+  console.log('East Asia Railway — way-only out tags geom pipeline v6');
   const results = [];
   for (const [id, def] of Object.entries(targets)) {
     if (bootstrapMode) {

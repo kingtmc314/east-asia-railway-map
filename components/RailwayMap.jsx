@@ -49,11 +49,11 @@ const TEXT_EN_LINE = [
 ];
 
 const TYPE_PROP = ['coalesce', ['get', 'railway_type'], ['get', 'rail_type'], 'rail'];
-
 const LINE_COLOR = ['coalesce', ['get', 'color'], '#ffffff'];
 
-const MAX_FETCH_BYTES = 5 * 1024 * 1024;
-const MAX_FEATURES_PER_SHARD = 80000;
+const MAX_FETCH_BYTES = 3 * 1024 * 1024;
+const MAX_FEATURES_PER_SHARD = 50000;
+const MAX_TOTAL_FEATURES = 120000;
 
 const RAIL_TYPES = [
   {
@@ -232,6 +232,7 @@ async function fetchCleanJson(url) {
   const text = await res.text();
   if (!text || text.length < 10) throw new Error('empty response');
   if (text.length > MAX_FETCH_BYTES) throw new Error(`payload too large (${(text.length / 1024 / 1024).toFixed(1)} MB)`);
+  await new Promise((r) => { setTimeout(r, 0); });
   let raw;
   try {
     raw = JSON.parse(text);
@@ -242,16 +243,12 @@ async function fetchCleanJson(url) {
   const stationCount = raw.stations?.length ?? 0;
   const featureCount = raw.features?.length ?? 0;
   const total = lineCount + stationCount || featureCount;
-  if (total > MAX_FEATURES_PER_SHARD) {
-    throw new Error(`too many features (${total})`);
-  }
-  if (total === 0 && !raw.stats?.lines) {
-    throw new Error('empty dataset');
-  }
+  if (total > MAX_FEATURES_PER_SHARD) throw new Error(`too many features (${total})`);
+  if (total === 0 && !raw.stats?.lines) throw new Error('empty dataset');
   return raw;
 }
 
-const yieldMain = () => new Promise((r) => { setTimeout(r, 16); });
+const yieldMain = () => new Promise((r) => { setTimeout(r, 32); });
 
 function buildRegionFilter(selected) {
   if (!selected.length) return ['==', ['get', 'macro_region'], '__none__'];
@@ -269,7 +266,7 @@ function lineLabelLayout(textField) {
     'text-font': LINE_LABEL_FONTS,
     'text-size': 11,
     'text-max-angle': 30,
-    'symbol-spacing': 350,
+    'symbol-spacing': 400,
     'text-keep-upright': true,
   };
 }
@@ -420,11 +417,15 @@ export default function RailwayMap() {
   const styleFallbackRef = useRef(false);
   const manifestRef = useRef(null);
   const dataRef = useRef({ lines: [], stations: [] });
-  const loadedRef = useRef(new Set());
+  const loadedFilesRef = useRef(new Set());
+  const fetchedRegionsRef = useRef(new Set());
+  const loadingLockRef = useRef(false);
+  const zoomRafRef = useRef(null);
   const matrixRef = useRef({ regions: ['hongkong'], types: ALL_TYPE_IDS, locale: 'zh' });
 
   const [mapIsReady, setMapIsReady] = useState(false);
   const [dataReady, setDataReady] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [locale, setLocale] = useState('zh');
   const [selectedRegions, setSelectedRegions] = useState(['hongkong']);
@@ -434,12 +435,12 @@ export default function RailwayMap() {
   const t = I18N[locale];
   matrixRef.current = { regions: selectedRegions, types: selectedTypes, locale };
 
-  const canUseMap = useCallback(() => {
+  const canUseMap = () => {
     const map = mapRef.current;
     return Boolean(map && mapIsReadyRef.current && layersReadyRef.current && map.isStyleLoaded());
-  }, []);
+  };
 
-  const applyLocale = useCallback((map, loc) => {
+  const applyLocale = (map, loc) => {
     if (!mapIsReadyRef.current || !layersReadyRef.current) return;
     const field = loc === 'en' ? TEXT_EN : TEXT_ZH;
     const lineField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
@@ -449,34 +450,36 @@ export default function RailwayMap() {
     for (const id of LINE_LABEL_LAYER_IDS) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', lineField);
     }
-  }, []);
+  };
 
-  const applyMatrix = useCallback((map, regions, types) => {
+  const applyMatrix = (map, regions, types) => {
     if (!mapIsReadyRef.current || !layersReadyRef.current) return;
     for (const rt of RAIL_TYPES) {
       const active = types.includes(rt.id);
-      const layerFilter = active ? buildLayerFilter(rt.filter, regions) : ['==', ['get', 'macro_region'], '__none__'];
+      const layerFilter = active
+        ? buildLayerFilter(rt.filter, regions)
+        : ['==', ['get', 'macro_region'], '__none__'];
       for (const id of [`lines-${rt.id}`, `line-labels-${rt.id}`, `dots-${rt.id}`, `labels-${rt.id}`]) {
         if (!map.getLayer(id)) continue;
         map.setFilter(id, layerFilter);
       }
     }
-  }, []);
+  };
 
-  const pushDataToMap = useCallback(() => {
+  const pushDataToMap = () => {
     if (!canUseMap()) return;
     const map = mapRef.current;
     const { lines, stations } = dataRef.current;
-    if (lines.length > MAX_FEATURES_PER_SHARD || stations.length > MAX_FEATURES_PER_SHARD) {
-      console.warn('dataset too large for smooth rendering — trim region selection');
+    if (lines.length + stations.length > MAX_TOTAL_FEATURES) {
+      console.warn('dataset too large — deselect some regions');
       return;
     }
     map.getSource(LINES_SOURCE).setData({ type: 'FeatureCollection', features: lines });
     map.getSource(STATIONS_SOURCE).setData({ type: 'FeatureCollection', features: stations });
     applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
-  }, [canUseMap, applyMatrix]);
+  };
 
-  const setupLayersAfterStyleLoad = useCallback((map) => {
+  const setupLayersAfterStyleLoad = (map) => {
     const loc = matrixRef.current.locale;
     const textField = loc === 'en' ? TEXT_EN : TEXT_ZH;
     const lineTextField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
@@ -484,11 +487,11 @@ export default function RailwayMap() {
     layersReadyRef.current = true;
     applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
     if (dataRef.current.lines.length) pushDataToMap();
-  }, [applyMatrix, pushDataToMap]);
+  };
 
-  const loadRegion = useCallback(async (regionId, onProgress) => {
+  const loadRegionData = async (regionId, onProgress) => {
     const region = REGIONS.find((r) => r.id === regionId);
-    if (!region) return;
+    if (!region || fetchedRegionsRef.current.has(regionId)) return;
 
     let manifest = manifestRef.current;
     if (!manifest && region.cleanMacro) {
@@ -503,79 +506,97 @@ export default function RailwayMap() {
 
     const jobs = [];
     if (region.cleanFile) {
-      if (!loadedRef.current.has(region.cleanFile)) {
+      if (!loadedFilesRef.current.has(region.cleanFile)) {
         jobs.push({ url: region.cleanFile, key: region.cleanFile, macro: regionId });
       }
     } else if (region.cleanMacro && manifest?.files) {
       for (const entry of manifest.files.filter((f) => f.macro === region.cleanMacro)) {
-        if (!loadedRef.current.has(entry.file)) {
+        if (!loadedFilesRef.current.has(entry.file)) {
           jobs.push({ url: entry.file, key: entry.file, macro: regionId });
         }
       }
     }
-    if (!jobs.length) return;
+
+    if (!jobs.length) {
+      fetchedRegionsRef.current.add(regionId);
+      return;
+    }
 
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
-      loadedRef.current.add(job.key);
+      loadedFilesRef.current.add(job.key);
       try {
         const raw = await fetchCleanJson(job.url);
+        await yieldMain();
         const { lines, stations } = decodeRaw(raw, job.macro);
         dataRef.current.lines = mergeFeatures(dataRef.current.lines, lines);
         dataRef.current.stations = mergeFeatures(dataRef.current.stations, stations);
-        if (canUseMap()) pushDataToMap();
       } catch (err) {
-        loadedRef.current.delete(job.key);
+        loadedFilesRef.current.delete(job.key);
         console.warn(`skip ${job.url}:`, err.message);
       }
       if (onProgress) onProgress(i + 1, jobs.length);
       await yieldMain();
     }
-  }, [canUseMap, pushDataToMap]);
 
-  const loadRegions = useCallback(async (regionIds) => {
-    if (!regionIds.length) return;
+    fetchedRegionsRef.current.add(regionId);
+    pushDataToMap();
+    setDataReady(dataRef.current.lines.length > 0 || dataRef.current.stations.length > 0);
+  };
+
+  const loadNewRegions = async (regionIds) => {
+    if (loadingLockRef.current) return;
+    const pending = regionIds.filter((id) => !fetchedRegionsRef.current.has(id));
+    if (!pending.length) return;
+
+    loadingLockRef.current = true;
+    setIsLoading(true);
+    setLoadProgress(0);
+
     let totalShards = 0;
     let doneShards = 0;
 
     let manifest = manifestRef.current;
-    const needsManifest = regionIds.some((id) => REGIONS.find((r) => r.id === id)?.cleanMacro);
+    const needsManifest = pending.some((id) => REGIONS.find((r) => r.id === id)?.cleanMacro);
     if (!manifest && needsManifest) {
       try {
         manifest = await fetchCleanJson('/data/clean-manifest.json');
         manifestRef.current = manifest;
       } catch (err) {
         console.warn('manifest unavailable:', err.message);
-        manifest = null;
       }
     }
 
-    for (const id of regionIds) {
+    for (const id of pending) {
       const r = REGIONS.find((x) => x.id === id);
       if (!r) continue;
       if (r.cleanFile) {
-        if (!loadedRef.current.has(r.cleanFile)) totalShards += 1;
+        if (!loadedFilesRef.current.has(r.cleanFile)) totalShards += 1;
       } else if (r.cleanMacro && manifest?.files) {
         totalShards += manifest.files.filter(
-          (f) => f.macro === r.cleanMacro && !loadedRef.current.has(f.file)
+          (f) => f.macro === r.cleanMacro && !loadedFilesRef.current.has(f.file)
         ).length;
       }
     }
 
-    for (const id of regionIds) {
-      await loadRegion(id, (done, batch) => {
-        doneShards += 1;
-        const pct = totalShards ? Math.round((doneShards / totalShards) * 100) : Math.round((done / batch) * 100);
-        setLoadProgress(pct);
-      });
+    try {
+      for (const id of pending) {
+        await loadRegionData(id, () => {
+          doneShards += 1;
+          const pct = totalShards
+            ? Math.round((doneShards / totalShards) * 100)
+            : Math.round((doneShards / pending.length) * 100);
+          setLoadProgress(pct);
+        });
+      }
+    } finally {
+      loadingLockRef.current = false;
+      setIsLoading(false);
     }
-
-    setDataReady(dataRef.current.lines.length > 0 || dataRef.current.stations.length > 0);
-    if (canUseMap()) pushDataToMap();
-  }, [loadRegion, canUseMap, pushDataToMap]);
+  };
 
   useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
+    if (!mapContainer.current || mapRef.current) return undefined;
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
@@ -595,6 +616,7 @@ export default function RailwayMap() {
       mapIsReadyRef.current = true;
       setMapIsReady(true);
       setupLayersAfterStyleLoad(map);
+      loadNewRegions(matrixRef.current.regions);
     };
 
     map.on('load', onMapReady);
@@ -610,7 +632,13 @@ export default function RailwayMap() {
         map.setStyle(STYLE_FALLBACK);
       }
     });
-    map.on('zoom', () => setZoomLevel(Math.round(map.getZoom() * 10) / 10));
+    map.on('zoom', () => {
+      if (zoomRafRef.current) return;
+      zoomRafRef.current = requestAnimationFrame(() => {
+        setZoomLevel(Math.round(map.getZoom() * 10) / 10);
+        zoomRafRef.current = null;
+      });
+    });
 
     mapRef.current = map;
     fetch(STYLE_CARTO, { method: 'HEAD' }).catch(() => {
@@ -621,29 +649,31 @@ export default function RailwayMap() {
     });
 
     return () => {
+      if (zoomRafRef.current) cancelAnimationFrame(zoomRafRef.current);
       map.remove();
       mapRef.current = null;
       mapIsReadyRef.current = false;
       layersReadyRef.current = false;
       styleFallbackRef.current = false;
     };
-  }, [setupLayersAfterStyleLoad]);
+  }, []);
 
   useEffect(() => {
-    if (!mapIsReady || !layersReadyRef.current) return;
-    setLoadProgress(0);
-    loadRegions(selectedRegions);
-  }, [selectedRegions, mapIsReady, loadRegions]);
-
-  useEffect(() => {
-    if (!canUseMap()) return;
-    applyLocale(mapRef.current, locale);
-  }, [locale, canUseMap, applyLocale, dataReady]);
+    if (!mapIsReadyRef.current) return;
+    const added = selectedRegions.filter((id) => !fetchedRegionsRef.current.has(id));
+    if (added.length) loadNewRegions(added);
+    if (canUseMap()) applyMatrix(mapRef.current, selectedRegions, selectedTypes);
+  }, [selectedRegions]);
 
   useEffect(() => {
     if (!canUseMap()) return;
     applyMatrix(mapRef.current, selectedRegions, selectedTypes);
-  }, [selectedRegions, selectedTypes, canUseMap, applyMatrix, dataReady]);
+  }, [selectedTypes]);
+
+  useEffect(() => {
+    if (!canUseMap()) return;
+    applyLocale(mapRef.current, locale);
+  }, [locale]);
 
   const flyToRegion = useCallback((regionId) => {
     const map = mapRef.current;
@@ -752,15 +782,17 @@ export default function RailwayMap() {
         <div className="mt-auto border-t border-slate-700/50 px-4 py-3">
           {!mapIsReady ? (
             <p className="text-[10px] text-slate-400">{t.mapLoading}</p>
-          ) : !dataReady ? (
+          ) : isLoading ? (
             <div>
               <p className="text-[10px] text-slate-400">{t.loading}</p>
               <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-800">
                 <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${loadProgress}%` }} />
               </div>
             </div>
-          ) : (
+          ) : dataReady ? (
             <p className="text-[10px] text-emerald-400/90">{t.ready}</p>
+          ) : (
+            <p className="text-[10px] text-slate-400">{t.loading}</p>
           )}
         </div>
       </aside>
