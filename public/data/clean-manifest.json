@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updated": "2026-07-05T15:21:19.672Z",
+  "updated": "2026-07-05T15:39:51.207Z",
   "files": [
     {
       "region": "hongkong",
@@ -14,9 +14,9 @@
       "region": "macau",
       "macro": "macau",
       "file": "/data/macau_clean.json",
-      "bytes": 30370,
-      "lines": 19,
-      "stations": 19
+      "bytes": 59650,
+      "lines": 22,
+      "stations": 47
     },
     {
       "region": "taiwan",
