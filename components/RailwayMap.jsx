@@ -539,7 +539,8 @@ export default function RailwayMap() {
     let doneShards = 0;
 
     let manifest = manifestRef.current;
-    if (!manifest && region.cleanMacro) {
+    const needsManifest = regionIds.some((id) => REGIONS.find((r) => r.id === id)?.cleanMacro);
+    if (!manifest && needsManifest) {
       try {
         manifest = await fetchCleanJson('/data/clean-manifest.json');
         manifestRef.current = manifest;
