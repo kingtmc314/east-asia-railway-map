@@ -4,12 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-/* ─── Map constants ─── */
 const STYLE_CARTO = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const STYLE_FALLBACK = 'https://tiles.openfreemap.org/styles/liberty';
-const GLYPHS_FALLBACK = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 const LABEL_FONTS = ['Noto Sans CJK JP Regular', 'Open Sans Regular'];
-const SNAP_DEG = 0.004;
 
 const LINES_SOURCE = 'railway-lines';
 const STATIONS_SOURCE = 'railway-stations';
@@ -21,47 +18,63 @@ const TEXT_ZH = [
   ['get', 'name:zh-HK'],
   ['get', 'name:zh-TW'],
   ['get', 'name:zh'],
-  ['get', 'label_zh'],
   ['get', 'name'],
 ];
 
 const TEXT_EN = ['coalesce', ['get', 'name:en'], ['get', 'name']];
 
-const LINE_PAINT = {
-  'line-color': ['coalesce', ['get', 'line_color'], ['get', 'color'], ['get', 'colour'], '#888888'],
-  'line-opacity': 0.94,
-  'line-cap': 'round',
-  'line-join': 'round',
-};
+const TYPE_PROP = ['coalesce', ['get', 'railway_type'], ['get', 'rail_type'], 'rail'];
+
+const LINE_COLOR = [
+  'coalesce',
+  ['get', 'color'],
+  ['get', 'line_color'],
+  ['get', 'colour'],
+  [
+    'match',
+    ['get', 'macro_region'],
+    'hongkong',
+    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'subway', '#00A040', 'tram', '#F7931E', '#971018'],
+    'macau',
+    ['match', TYPE_PROP, 'highspeed', '#E60012', 'subway', '#0099CC', 'tram', '#9B1096', '#003DA5'],
+    'taiwan',
+    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'subway', '#007748', 'tram', '#FFD100', '#003366'],
+    'china',
+    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'subway', '#00A550', 'tram', '#FF6600', '#003DA5'],
+    'japan',
+    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'subway', '#009944', 'tram', '#FF8800', '#006633'],
+    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'rail', '#3B82F6', 'subway', '#22C55E', 'tram', '#F97316', '#888888'],
+  ],
+];
 
 const RAIL_TYPES = [
   {
-    id: 'hsr',
+    id: 'highspeed',
     color: '#FF3040',
     minzoom: 3,
-    lineWidth: ['interpolate', ['linear'], ['zoom'], 3, 2.5, 8, 3, 12, 4.5, 16, 6],
-    filter: ['==', ['get', 'rail_type'], 'hsr'],
+    lineWidth: ['interpolate', ['linear'], ['zoom'], 3, 2.5, 8, 3.5, 12, 5, 16, 6.5],
+    filter: ['==', TYPE_PROP, 'highspeed'],
   },
   {
     id: 'rail',
     color: '#3B82F6',
     minzoom: 7,
     lineWidth: ['interpolate', ['linear'], ['zoom'], 7, 1.5, 10, 2.5, 14, 4, 18, 5.5],
-    filter: ['==', ['get', 'rail_type'], 'rail'],
+    filter: ['==', TYPE_PROP, 'rail'],
   },
   {
     id: 'subway',
     color: '#22C55E',
     minzoom: 10,
     lineWidth: ['interpolate', ['linear'], ['zoom'], 10, 2, 13, 3, 16, 4.5],
-    filter: ['==', ['get', 'rail_type'], 'subway'],
+    filter: ['==', TYPE_PROP, 'subway'],
   },
   {
     id: 'tram',
     color: '#F97316',
     minzoom: 12.5,
     lineWidth: ['interpolate', ['linear'], ['zoom'], 12.5, 1.5, 14, 2.5, 18, 4],
-    filter: ['==', ['get', 'rail_type'], 'tram'],
+    filter: ['==', TYPE_PROP, 'tram'],
   },
 ];
 
@@ -98,10 +111,10 @@ const I18N = {
       hongkong: '香港', macau: '澳門', taiwan: '台灣', china: '中國大陸', japan: '日本',
     },
     typeLabels: {
-      hsr: '高鐵 / 新幹線', rail: '普通鐵路 / 國鐵', subway: '地鐵 / 捷運', tram: '輕軌 / 路面電車',
+      highspeed: '高鐵 / 新幹線', rail: '普通鐵路 / 國鐵', subway: '地鐵 / 捷運', tram: '輕軌 / 路面電車',
     },
     typeDesc: {
-      hsr: 'Z3+ 全球長途骨幹', rail: 'Z7+ 城際幹線', subway: 'Z10+ 城市軌道', tram: 'Z12.5+ 社區細節',
+      highspeed: 'Z3+ 全球長途骨幹', rail: 'Z7+ 城際幹線', subway: 'Z10+ 城市軌道', tram: 'Z12.5+ 社區細節',
     },
   },
   en: {
@@ -124,92 +137,69 @@ const I18N = {
       hongkong: 'Hong Kong', macau: 'Macau', taiwan: 'Taiwan', china: 'Mainland China', japan: 'Japan',
     },
     typeLabels: {
-      hsr: 'High-speed / Shinkansen', rail: 'Conventional rail', subway: 'Metro / Subway', tram: 'Light rail / Tram',
+      highspeed: 'High-speed / Shinkansen', rail: 'Conventional rail', subway: 'Metro / Subway', tram: 'Light rail / Tram',
     },
     typeDesc: {
-      hsr: 'Z3+ long-distance backbone', rail: 'Z7+ intercity lines', subway: 'Z10+ urban metro', tram: 'Z12.5+ neighbourhood detail',
+      highspeed: 'Z3+ long-distance backbone', rail: 'Z7+ intercity lines', subway: 'Z10+ urban metro', tram: 'Z12.5+ neighbourhood detail',
     },
   },
 };
 
-/* ─── Data helpers ─── */
-function classifyLine(props) {
-  const p = props || {};
-  if (p.rail_type) return p.rail_type;
-  if (p.line_tier === 'hsr' || p.is_hsr === 1 || p.highspeed === 'yes') return 'hsr';
-  if (p.line_tier === 'tram' || p.railway === 'tram' || p.railway === 'light_rail') return 'tram';
-  if (p.line_tier === 'metro' || p.railway === 'subway') return 'subway';
+function normalizeType(raw) {
+  if (!raw || raw === 'hsr') return 'highspeed';
+  if (ALL_TYPE_IDS.includes(raw)) return raw;
   return 'rail';
 }
 
 function decodeRaw(raw, macroRegion) {
   let lines = [];
   let stations = [];
+
   if (Array.isArray(raw.lines)) lines = raw.lines;
-  else if (raw?.type === 'FeatureCollection') {
-    for (const f of raw.features || []) {
+  if (Array.isArray(raw.stations)) stations = raw.stations;
+  if (Array.isArray(raw.features)) {
+    for (const f of raw.features) {
       const t = f.geometry?.type;
       if (t === 'LineString' || t === 'MultiLineString') lines.push(f);
       else if (t === 'Point') stations.push(f);
     }
   }
-  if (Array.isArray(raw.stations)) stations = raw.stations;
 
-  return {
-    lines: lines.map((f) => ({
+  const normLine = (f) => {
+    const railway_type = normalizeType(f.properties?.railway_type || f.properties?.rail_type);
+    const color = f.properties?.color || f.properties?.line_color || f.properties?.colour;
+    return {
       ...f,
       properties: {
         ...f.properties,
         macro_region: f.properties?.macro_region || macroRegion,
-        rail_type: classifyLine(f.properties),
-        line_color: f.properties?.line_color || f.properties?.color || f.properties?.colour,
+        railway_type,
+        color,
+        line_name: f.properties?.line_name || f.properties?.name,
       },
-    })),
-    stations: stations.map((f) => ({
-      ...f,
-      properties: { ...f.properties, macro_region: f.properties?.macro_region || macroRegion },
-    })),
-  };
-}
-
-function* iterLineCoords(geometry) {
-  if (!geometry) return;
-  if (geometry.type === 'LineString') yield geometry.coordinates;
-  else if (geometry.type === 'MultiLineString') {
-    for (const seg of geometry.coordinates) yield seg;
-  }
-}
-
-function enrichStations(lines, stations) {
-  const thresholdSq = SNAP_DEG * SNAP_DEG;
-  return stations.map((raw) => {
-    const coords = raw.geometry?.coordinates;
-    if (!Array.isArray(coords) || coords.length < 2) return null;
-    const [sx, sy] = coords;
-    const types = new Set();
-    for (const line of lines) {
-      for (const seg of iterLineCoords(line.geometry)) {
-        if (!seg?.length) continue;
-        let hit = false;
-        for (let i = 0; i < seg.length; i++) {
-          const dx = seg[i][0] - sx;
-          const dy = seg[i][1] - sy;
-          if (dx * dx + dy * dy <= thresholdSq) { hit = true; break; }
-        }
-        if (hit) { types.add(line.properties?.rail_type || 'rail'); break; }
-      }
-    }
-    const priority = ['hsr', 'rail', 'subway', 'tram'];
-    let rail_type = 'rail';
-    for (const p of priority) {
-      if (types.has(p)) { rail_type = p; break; }
-    }
-    return {
-      ...raw,
-      geometry: { type: 'Point', coordinates: [coords[0], coords[1]] },
-      properties: { ...raw.properties, rail_type },
     };
-  }).filter(Boolean);
+  };
+
+  const normStation = (f) => {
+    const railway_type = normalizeType(f.properties?.railway_type || f.properties?.rail_type);
+    return {
+      ...f,
+      properties: { ...f.properties, macro_region: f.properties?.macro_region || macroRegion, railway_type },
+    };
+  };
+
+  return {
+    lines: lines.flatMap((f) => {
+      if (f.geometry?.type === 'MultiLineString') {
+        return f.geometry.coordinates.map((seg) => normLine({
+          ...f,
+          geometry: { type: 'LineString', coordinates: seg },
+        }));
+      }
+      return [normLine(f)];
+    }),
+    stations: stations.map(normStation),
+  };
 }
 
 function mergeFeatures(existing, incoming) {
@@ -263,7 +253,13 @@ function addRailLayers(map, textField) {
         source: LINES_SOURCE,
         minzoom: t.minzoom,
         filter: t.filter,
-        paint: { ...LINE_PAINT, 'line-width': t.lineWidth },
+        paint: {
+          'line-color': LINE_COLOR,
+          'line-opacity': 0.94,
+          'line-cap': 'round',
+          'line-join': 'round',
+          'line-width': t.lineWidth,
+        },
       });
     }
 
@@ -274,11 +270,11 @@ function addRailLayers(map, textField) {
         type: 'circle',
         source: STATIONS_SOURCE,
         minzoom: t.minzoom,
-        filter: ['==', ['get', 'rail_type'], t.id],
+        filter: ['==', TYPE_PROP, t.id],
         paint: {
           'circle-radius': ['interpolate', ['linear'], ['zoom'], t.minzoom, 3, 14, 5, 18, 7],
           'circle-color': '#FFFFFF',
-          'circle-stroke-color': t.color,
+          'circle-stroke-color': ['coalesce', ['get', 'color'], t.color],
           'circle-stroke-width': 2,
         },
       });
@@ -291,7 +287,7 @@ function addRailLayers(map, textField) {
         type: 'symbol',
         source: STATIONS_SOURCE,
         minzoom: t.minzoom,
-        filter: ['==', ['get', 'rail_type'], t.id],
+        filter: ['==', TYPE_PROP, t.id],
         layout: { ...labelLayout(t.minzoom), 'text-field': textField },
         paint: {
           'text-color': '#F8FAFC',
@@ -313,8 +309,7 @@ function initRailwayStack(map, textField) {
   addRailLayers(map, textField);
 }
 
-/* ─── UI primitives ─── */
-function TogglePill({ active, onClick, children, accent }) {
+function TogglePill({ active, onClick, children }) {
   return (
     <button
       type="button"
@@ -322,7 +317,7 @@ function TogglePill({ active, onClick, children, accent }) {
       className={[
         'rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150',
         active
-          ? accent || 'bg-sky-500 text-white shadow-lg shadow-sky-500/25'
+          ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/25'
           : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200',
       ].join(' ')}
     >
@@ -346,14 +341,11 @@ function CheckChip({ checked, onChange, label, color }) {
         className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white/20"
         style={{ backgroundColor: checked ? color : '#334155' }}
       />
-      <span className={`text-xs font-medium ${checked ? 'text-slate-100' : 'text-slate-400'}`}>
-        {label}
-      </span>
+      <span className={`text-xs font-medium ${checked ? 'text-slate-100' : 'text-slate-400'}`}>{label}</span>
     </label>
   );
 }
 
-/* ─── Main component ─── */
 export default function RailwayMap() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
@@ -374,7 +366,6 @@ export default function RailwayMap() {
   const [zoomLevel, setZoomLevel] = useState(10);
 
   const t = I18N[locale];
-
   matrixRef.current = { regions: selectedRegions, types: selectedTypes, locale };
 
   const canUseMap = useCallback(() => {
@@ -408,9 +399,8 @@ export default function RailwayMap() {
     if (!canUseMap()) return;
     const map = mapRef.current;
     const { lines, stations } = dataRef.current;
-    const enriched = enrichStations(lines, stations);
     map.getSource(LINES_SOURCE).setData({ type: 'FeatureCollection', features: lines });
-    map.getSource(STATIONS_SOURCE).setData({ type: 'FeatureCollection', features: enriched });
+    map.getSource(STATIONS_SOURCE).setData({ type: 'FeatureCollection', features: stations });
     applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
   }, [canUseMap, applyMatrix]);
 
@@ -464,7 +454,6 @@ export default function RailwayMap() {
 
   const loadRegions = useCallback(async (regionIds) => {
     if (!regionIds.length) return;
-
     let done = 0;
     for (const id of regionIds) {
       await loadRegion(id);
@@ -472,12 +461,10 @@ export default function RailwayMap() {
       setLoadProgress(Math.round((done / regionIds.length) * 100));
       if (canUseMap()) pushDataToMap();
     }
-
-    setDataReady(loadedRef.current.size > 0);
+    setDataReady(dataRef.current.lines.length > 0 || dataRef.current.stations.length > 0);
     if (canUseMap()) pushDataToMap();
   }, [loadRegion, canUseMap, pushDataToMap]);
 
-  /* ─── Map init (once) ─── */
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
 
@@ -489,7 +476,6 @@ export default function RailwayMap() {
       minZoom: 2,
       maxZoom: 18,
       fadeDuration: 0,
-      attributionControl: true,
     });
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
@@ -500,32 +486,25 @@ export default function RailwayMap() {
       mapIsReadyRef.current = true;
       setMapIsReady(true);
       setupLayersAfterStyleLoad(map);
-      fetchCleanJson('/data/clean-manifest.json')
-        .then((m) => { manifestRef.current = m; })
-        .catch(() => {});
+      fetchCleanJson('/data/clean-manifest.json').then((m) => { manifestRef.current = m; }).catch(() => {});
     };
 
     map.on('load', onMapReady);
-
     map.on('style.load', () => {
       if (!mapIsReadyRef.current) return;
       layersReadyRef.current = false;
       setupLayersAfterStyleLoad(map);
     });
-
     map.on('error', (e) => {
       const msg = e?.error?.message || '';
       if (!styleFallbackRef.current && /style|sprite|glyphs|fetch/i.test(msg)) {
-        console.warn('Basemap error, falling back to OpenFreeMap:', msg);
         styleFallbackRef.current = true;
         map.setStyle(STYLE_FALLBACK);
       }
     });
-
     map.on('zoom', () => setZoomLevel(Math.round(map.getZoom() * 10) / 10));
 
     mapRef.current = map;
-
     fetch(STYLE_CARTO, { method: 'HEAD' }).catch(() => {
       if (!styleFallbackRef.current) {
         styleFallbackRef.current = true;
@@ -542,14 +521,12 @@ export default function RailwayMap() {
     };
   }, [setupLayersAfterStyleLoad]);
 
-  /* Data load — only after map + layers ready */
   useEffect(() => {
     if (!mapIsReady || !layersReadyRef.current) return;
     setLoadProgress(0);
     loadRegions(selectedRegions);
   }, [selectedRegions, mapIsReady, loadRegions]);
 
-  /* Matrix / locale sync — guarded */
   useEffect(() => {
     if (!canUseMap()) return;
     applyLocale(mapRef.current, locale);
@@ -573,12 +550,6 @@ export default function RailwayMap() {
       if (!prev.includes(id)) flyToRegion(id);
       return next;
     });
-  };
-
-  const toggleType = (id) => {
-    setSelectedTypes((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
   };
 
   const activeLegend = useMemo(
@@ -635,7 +606,13 @@ export default function RailwayMap() {
             </div>
             <div className="grid grid-cols-1 gap-1.5">
               {RAIL_TYPES.map((rt) => (
-                <CheckChip key={rt.id} checked={selectedTypes.includes(rt.id)} onChange={() => toggleType(rt.id)} label={t.typeLabels[rt.id]} color={rt.color} />
+                <CheckChip
+                  key={rt.id}
+                  checked={selectedTypes.includes(rt.id)}
+                  onChange={() => setSelectedTypes((prev) => (prev.includes(rt.id) ? prev.filter((x) => x !== rt.id) : [...prev, rt.id]))}
+                  label={t.typeLabels[rt.id]}
+                  color={rt.color}
+                />
               ))}
             </div>
           </section>
@@ -649,7 +626,13 @@ export default function RailwayMap() {
               <ul className="space-y-2.5">
                 {activeLegend.map((rt) => (
                   <li key={rt.id} className="flex items-center gap-3">
-                    <span className="h-1 w-10 shrink-0 rounded-full shadow-sm" style={{ backgroundColor: rt.color, boxShadow: rt.id === 'hsr' ? `0 0 8px ${rt.color}88` : undefined }} />
+                    <span
+                      className="h-1 w-10 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor: rt.color,
+                        boxShadow: rt.id === 'highspeed' ? `0 0 8px ${rt.color}88` : undefined,
+                      }}
+                    />
                     <div>
                       <p className="text-xs font-medium text-slate-200">{t.typeLabels[rt.id]}</p>
                       <p className="text-[10px] text-slate-500">{t.typeDesc[rt.id]}</p>

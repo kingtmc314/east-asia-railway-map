@@ -2,10 +2,10 @@
 
 **East Asia Railway Map & Interactive GIS Matrix**
 
-A professional, bilingual Web GIS platform for exploring railway networks across **Hong Kong, Macau, Taiwan, Mainland China, and Japan**. Built with Next.js 15, MapLibre GL JS, and Tailwind CSS — inspired by the fluid UX and backend architecture of [RailsMaps](https://railsmaps.com).
+A production-grade, bilingual Web GIS for exploring railway networks across **Hong Kong, Macau, Taiwan, Mainland China, and Japan**. Built with Next.js 15, MapLibre GL JS, and Tailwind CSS — architected for the fluid UX, official line colours, and backend data discipline of [RailsMaps](https://railsmaps.com).
 
 [![Live Demo](https://img.shields.io/badge/demo-vercel.app-0070f3?style=flat-square)](https://east-asia-railway-map.vercel.app)
-[![Data Pipeline](https://img.shields.io/badge/data-GitHub%20Actions-2088FF?style=flat-square)](#automated-data-pipeline)
+[![Data Pipeline](https://img.shields.io/badge/data-GitHub%20Actions-2088FF?style=flat-square)](#github-actions-data-pipeline)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
 ---
@@ -14,61 +14,65 @@ A professional, bilingual Web GIS platform for exploring railway networks across
 
 ### 1. RailsMaps-grade aesthetic architecture
 
-- **Carto Dark Matter** basemap — no API key, GPU-accelerated vector tiles
-- **Official line colours** from OpenStreetMap (`line_color`, operator, network)
-- Station labels anchored to track geometry — no drift, no missing hubs
-- Dark GIS canvas with frosted-glass sidebar control panel
+- **Carto Dark Matter** vector basemap — GPU-accelerated, no API key
+- **Official line colours** inherited from OSM route relations (`colour` / `color` tags)
+- Tracks and station labels share the same geometry — no drift, no missing hubs
+- Dark GIS canvas with frosted-glass sidebar (`bg-slate-900/80 backdrop-blur-md`)
 
 ### 2. Bilingual rendering engine
 
-- **One-click 繁中 / EN toggle** — instant label switch via `map.setLayoutProperty`
-- **Zero reload** — MapLibre expressions swap `text-field` in milliseconds
-- Full UI localisation: sidebar, legend, type descriptions, status bar
+- **One-click 繁中 / EN** — UI and map labels switch instantly via `map.setLayoutProperty`
+- Zero reload; MapLibre expressions swap `text-field` in milliseconds
 
-| Mode | MapLibre `text-field` expression |
-|------|----------------------------------|
-| 繁中 | `coalesce(name:zh-Hant, name:zh-HK, name:zh-TW, name:zh, label_zh, name)` |
+| Mode | MapLibre `text-field` |
+|------|------------------------|
+| 繁中 | `coalesce(name:zh-Hant, name:zh-HK, name:zh-TW, name:zh, name)` |
 | EN | `coalesce(name:en, name)` |
 
 ### 3. Dual-matrix control panel
 
-Cross-filter **5 macro-regions × 4 railway types** with instant GPU filters:
+Cross-filter **5 macro-regions × 4 railway types** with hardware-accelerated `map.setFilter()`:
 
-| Regions | Types |
-|---------|-------|
-| 香港 Hong Kong | 高鐵 / 新幹線 High-speed |
-| 澳門 Macau | 普通鐵路 / 國鐵 Conventional rail |
-| 台灣 Taiwan | 地鐵 / 捷運 Metro |
-| 中國大陸 China | 輕軌 / 路面電車 Light rail |
+| Regions | Railway types |
+|---------|---------------|
+| 香港 Hong Kong | 高鐵 / 新幹線 `highspeed` |
+| 澳門 Macau | 普通鐵路 `rail` |
+| 台灣 Taiwan | 地鐵 / 捷運 `subway` |
+| 中國大陸 China | 輕軌 / 路面電車 `tram` |
 | 日本 Japan | |
 
+- **Default:** Hong Kong only — other regions load on demand (zero initial payload)
 - **Select all / Clear all** for both matrices
-- **Live legend** updates with active type selection
-- Region & type changes use `map.setFilter()` only — no data re-fetch
+- **Live legend** reflects active type selection with RailsMaps-style colours
 
-### 4. Hardware-accelerated zoom thinning
+### 4. Strict zoom thinning (60 FPS target)
 
-| Type | `minzoom` | Rationale |
-|------|-----------|-----------|
-| High-speed / Shinkansen | **3** | Global backbone visible at continent scale |
-| Conventional rail | **7** | Intercity lines appear at regional zoom |
-| Metro / Subway | **10** | Urban networks + station labels at city scale |
-| Light rail / Tram | **12.5** | Neighbourhood detail only when zoomed in |
+| Type | `minzoom` | When visible |
+|------|-----------|--------------|
+| `highspeed` | **3** | Continent scale — CRH, Shinkansen backbone |
+| `rail` | **7** | Regional intercity |
+| `subway` | **10** | City metro + station labels |
+| `tram` | **12.5** | Light rail / Macau LRT / HK Light Rail — neighbourhood only |
 
-At low zoom, MapLibre **never evaluates** tram/metro layers — eliminating label collision lag.
+MapLibre never evaluates tram layers below Z12.5 — eliminating label collision and OOM at country zoom.
 
-### 5. Automated data pipeline (RailsMaps-style backend)
+### 5. GitHub Actions data pipeline
 
-Heavy OSM processing runs **off the browser** via GitHub Actions:
+Heavy OSM work runs **off the browser** every Sunday:
 
-| Stage | What happens |
-|-------|----------------|
-| **Fetch** | Overpass API pulls latest `rail/subway/tram/light_rail` ways + stations |
-| **Clean** | Strip OSM metadata bloat; keep only `name:zh-Hant`, `name:en`, `railway`, `color` |
-| **Simplify** | Douglas–Peucker + 5-decimal coords → **1–5 MB per region** |
-| **Deploy** | Auto-commit `*_clean.json` → Vercel rebuilds static assets |
+```
+Overpass API  →  route relations + station nodes  →  clean GeoJSON  →  git push  →  Vercel deploy
+```
 
-Frontend reads pre-baked files only — **no Overpass calls, no 300 MB TopoJSON, no blank-page OOM**.
+| Stage | Action |
+|-------|--------|
+| **Dual-track fetch** | Route relations (colour inheritance) + standalone `station`/`halt` nodes |
+| **Classify** | Unified `railway_type`: `highspeed`, `rail`, `subway`, `tram` |
+| **Compress** | Strip OSM bloat; Douglas–Peucker simplify; coords → 5 decimals |
+| **Slice** | HK/MO/TW single files; China/Japan provincial shards (~100 KB–3 MB each) |
+| **Deploy** | Auto-commit `public/data/*_clean.json` triggers Vercel static rebuild |
+
+Frontend reads pre-baked JSON only — **no Overpass in browser, no 300 MB TopoJSON, no blank-page crashes**.
 
 ---
 
@@ -77,11 +81,10 @@ Frontend reads pre-baked files only — **no Overpass calls, no 300 MB TopoJSON,
 | Layer | Technology |
 |-------|------------|
 | Framework | Next.js 15 (App Router) |
-| Map engine | MapLibre GL JS 4.x |
-| Styling | Tailwind CSS 3 |
-| Data format | Clean GeoJSON (`*_clean.json`) |
-| Data pipeline | Node.js + GitHub Actions + Overpass API |
-| Basemap | CARTO Dark Matter GL |
+| Map | MapLibre GL JS 4.x |
+| Styling | Tailwind CSS 3.x |
+| Data | Clean GeoJSON (`FeatureCollection`) |
+| CI/CD | GitHub Actions + Vercel |
 
 ---
 
@@ -89,22 +92,20 @@ Frontend reads pre-baked files only — **no Overpass calls, no 300 MB TopoJSON,
 
 ```
 ├── components/
-│   └── RailwayMap.jsx              # GIS matrix UI + MapLibre layers
+│   ├── RailwayMap.jsx      # Map + dual-matrix sidebar
+│   └── MapPage.jsx         # Full-screen layout wrapper
 ├── scripts/
-│   └── fetch-and-clean-transit.js  # Overpass fetch + clean + simplify
+│   └── fetch-and-clean-transit.js   # Overpass pipeline
 ├── .github/workflows/
-│   └── update-railway-data.yml     # Weekly cron + manual dispatch
-├── public/data/
-│   ├── clean-manifest.json         # Index of all clean files + stats
-│   ├── hongkong_clean.json         # Single-file regions (~0.5–3 MB)
-│   ├── macau_clean.json
-│   ├── taiwan_clean.json
-│   └── clean/                      # Sharded large regions
-│       ├── china-beijing.json
-│       ├── china-guangdong.json
-│       ├── japan-kanto-chubu.json
-│       └── …
-└── README.md
+│   └── update-railway-data.yml      # Weekly cron + manual dispatch
+└── public/data/
+    ├── hongkong_clean.json
+    ├── macau_clean.json
+    ├── taiwan_clean.json
+    ├── clean-manifest.json
+    └── clean/               # China + Japan shards
+        ├── china-*.json
+        └── japan-*.json
 ```
 
 ---
@@ -113,109 +114,80 @@ Frontend reads pre-baked files only — **no Overpass calls, no 300 MB TopoJSON,
 
 ```bash
 npm install
-
-# Generate clean JSON from existing topo (offline, fast)
-npm run fetch-transit:bootstrap
-
-# Or fetch fresh data from Overpass (slow, needs network)
-npm run fetch-transit
-
-npm run dev
-# → http://localhost:3000
+npm run dev          # http://localhost:3000
 ```
 
----
-
-## Automated data pipeline
-
-### Weekly schedule
-
-`.github/workflows/update-railway-data.yml` runs every **Sunday 00:00 UTC**:
-
-1. Checkout repo on Ubuntu
-2. `node scripts/fetch-and-clean-transit.js`
-3. Auto-commit `public/data/*_clean.json`
-4. Push → Vercel auto-deploys
-
-### Manual trigger
-
-GitHub → **Actions** → **Update Railway Data** → **Run workflow**
-
-| Input | Description |
-|-------|-------------|
-| `region` | `all`, `hongkong`, `macau`, `taiwan`, `china`, or `japan` |
-| `bootstrap_only` | Skip Overpass; convert existing topo → clean |
-
-### What gets stripped
-
-Removed: `uid`, `timestamp`, `user`, `changeset`, `version`, highway tags, etc.
-
-Kept: `name:zh-Hant`, `name:en`, `name:zh`, `railway`, `color`, `operator`, `network`, `highspeed`
-
-### Frontend loading
-
-```
-User checks [ 日本 ]
-        ↓
-fetch('/data/clean-manifest.json') → parallel fetch clean/japan-*.json shards
-        ↓
-map.setFilter() for region matrix — 0 ms re-download on toggle
-```
-
----
-
-## Deploy to Vercel
+### Refresh data locally
 
 ```bash
-git push origin main
-npx vercel deploy --prod --yes
-```
+# Live Overpass (slow; needs curl + network)
+npm run fetch-transit
 
-**Production:** [east-asia-railway-map.vercel.app](https://east-asia-railway-map.vercel.app)
+# Offline from existing topo sources
+npm run fetch-transit:bootstrap
 
-Clean JSON bundle uses **sharded files** for China/Japan (~1–8 MB each) — fast cold starts, no browser OOM.
-
----
-
-## Architecture notes
-
-### Instant filter pipeline
-
-```
-User toggles region/type
-        ↓
-map.setFilter(layerId, ['all', typeFilter, regionFilter])
-        ↓
-GPU culls features — 0 ms network, 0 ms parse
-```
-
-### Bilingual pipeline
-
-```
-User toggles 繁中 / EN
-        ↓
-map.setLayoutProperty('labels-*', 'text-field', TEXT_ZH | TEXT_EN)
-```
-
-### Data classification
-
-Each feature is tagged at pipeline time:
-
-```javascript
-rail_type: 'hsr' | 'rail' | 'subway' | 'tram'
-macro_region: 'hongkong' | 'macau' | 'taiwan' | 'china' | 'japan'
+# Single region
+node scripts/fetch-and-clean-transit.js --region=macau
 ```
 
 ---
 
-## Data source & licence
+## GitHub Actions data pipeline
 
-- **Map data:** © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL)
-- **Basemap:** © [CARTO](https://carto.com/attributions) · © OpenStreetMap
-- **Code:** MIT License
+Workflow: [`.github/workflows/update-railway-data.yml`](.github/workflows/update-railway-data.yml)
+
+| Trigger | Schedule |
+|---------|----------|
+| Cron | Every Sunday 00:00 UTC |
+| Manual | `workflow_dispatch` in GitHub Actions tab |
+
+The job runs `node scripts/fetch-and-clean-transit.js`, commits changes under `public/data/`, and pushes to `main`. Vercel rebuilds automatically.
+
+**Note:** Pushing workflow files requires a GitHub token with the `workflow` scope. Add the workflow via the GitHub UI if push is rejected.
 
 ---
 
-## Acknowledgements
+## Data schema (clean GeoJSON)
 
-UX and pipeline patterns inspired by [RailsMaps](https://railsmaps.com) — the gold standard for interactive railway cartography on the web.
+Each `*_clean.json` is a slim `FeatureCollection`:
+
+**LineString properties**
+
+| Field | Description |
+|-------|-------------|
+| `railway_type` | `highspeed` \| `rail` \| `subway` \| `tram` |
+| `color` | Official route colour (from OSM relation) |
+| `line_name` | Route name |
+| `name:zh-Hant`, `name:en` | Bilingual labels |
+| `macro_region` | `hongkong`, `macau`, `taiwan`, `china`, `japan` |
+
+**Point (station) properties**
+
+| Field | Description |
+|-------|-------------|
+| `railway_type` | Inherited from route relation or node heuristics |
+| `name:zh-Hant`, `name:en` | Station names |
+
+---
+
+## Deployment
+
+Connected to [Vercel](https://vercel.com) — every push to `main` deploys production.
+
+```bash
+npx vercel deploy --prod
+```
+
+Live: **https://east-asia-railway-map.vercel.app**
+
+---
+
+## Credits
+
+- Map data © [OpenStreetMap](https://www.openstreetmap.org) contributors (ODbL)
+- Basemap © [CARTO](https://carto.com) Dark Matter
+- UX inspiration: [RailsMaps](https://railsmaps.com)
+
+## License
+
+MIT
