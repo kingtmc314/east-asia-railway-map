@@ -1,11 +1,2 @@
-# 排除原始 GeoJSON（已由 TopoJSON 取代，且超過 Vercel 100MB 限制）
-public/data/raw/
-public/data/taiwan.json
-public/data/hongkong.json
-public/data/macau.json
-public/data/china.json
-public/data/japan.json
-
-# 建置產物
 .next/
 node_modules/
