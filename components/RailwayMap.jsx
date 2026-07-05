@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -239,10 +239,7 @@ async function fetchCleanJson(url) {
   } catch {
     throw new Error('invalid JSON');
   }
-  const lineCount = raw.lines?.length ?? 0;
-  const stationCount = raw.stations?.length ?? 0;
-  const featureCount = raw.features?.length ?? 0;
-  const total = lineCount + stationCount || featureCount;
+  const total = (raw.lines?.length ?? 0) + (raw.stations?.length ?? 0) || (raw.features?.length ?? 0);
   if (total > MAX_FEATURES_PER_SHARD) throw new Error(`too many features (${total})`);
   if (total === 0 && !raw.stats?.lines) throw new Error('empty dataset');
   return raw;
@@ -370,6 +367,48 @@ function initRailwayStack(map, textField, lineTextField) {
   addRailLayers(map, textField, lineTextField);
 }
 
+function applyMatrix(map, regions, types) {
+  for (const rt of RAIL_TYPES) {
+    const active = types.includes(rt.id);
+    const layerFilter = active
+      ? buildLayerFilter(rt.filter, regions)
+      : ['==', ['get', 'macro_region'], '__none__'];
+    for (const id of [`lines-${rt.id}`, `line-labels-${rt.id}`, `dots-${rt.id}`, `labels-${rt.id}`]) {
+      if (!map.getLayer(id)) continue;
+      map.setFilter(id, layerFilter);
+    }
+  }
+}
+
+function applyLocale(map, loc) {
+  const field = loc === 'en' ? TEXT_EN : TEXT_ZH;
+  const lineField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
+  for (const id of LABEL_LAYER_IDS) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', field);
+  }
+  for (const id of LINE_LABEL_LAYER_IDS) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', lineField);
+  }
+}
+
+const MapStatusBar = memo(function MapStatusBar({
+  mapReady, dataLoading, dataReady, progress, labels,
+}) {
+  if (!mapReady) return <p className="text-[10px] text-slate-400">{labels.mapLoading}</p>;
+  if (dataLoading) {
+    return (
+      <div>
+        <p className="text-[10px] text-slate-400">{labels.loading}</p>
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-800">
+          <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+    );
+  }
+  if (dataReady) return <p className="text-[10px] text-emerald-400/90">{labels.ready}</p>;
+  return <p className="text-[10px] text-slate-400">{labels.loading}</p>;
+});
+
 function TogglePill({ active, onClick, children }) {
   return (
     <button
@@ -410,9 +449,9 @@ function CheckChip({ checked, onChange, label, color }) {
 }
 
 export default function RailwayMap() {
-  const mapContainer = useRef(null);
   const mapRef = useRef(null);
-  const mapIsReadyRef = useRef(false);
+  const mapContainerRef = useRef(null);
+  const isInitialized = useRef(false);
   const layersReadyRef = useRef(false);
   const styleFallbackRef = useRef(false);
   const manifestRef = useRef(null);
@@ -421,11 +460,12 @@ export default function RailwayMap() {
   const fetchedRegionsRef = useRef(new Set());
   const loadingLockRef = useRef(false);
   const zoomRafRef = useRef(null);
+  const loadPipelineRef = useRef(null);
   const matrixRef = useRef({ regions: ['hongkong'], types: ALL_TYPE_IDS, locale: 'zh' });
 
-  const [mapIsReady, setMapIsReady] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const [dataReady, setDataReady] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [locale, setLocale] = useState('zh');
   const [selectedRegions, setSelectedRegions] = useState(['hongkong']);
@@ -433,42 +473,10 @@ export default function RailwayMap() {
   const [zoomLevel, setZoomLevel] = useState(10);
 
   const t = I18N[locale];
-  matrixRef.current = { regions: selectedRegions, types: selectedTypes, locale };
-
-  const canUseMap = () => {
-    const map = mapRef.current;
-    return Boolean(map && mapIsReadyRef.current && layersReadyRef.current && map.isStyleLoaded());
-  };
-
-  const applyLocale = (map, loc) => {
-    if (!mapIsReadyRef.current || !layersReadyRef.current) return;
-    const field = loc === 'en' ? TEXT_EN : TEXT_ZH;
-    const lineField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
-    for (const id of LABEL_LAYER_IDS) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', field);
-    }
-    for (const id of LINE_LABEL_LAYER_IDS) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', lineField);
-    }
-  };
-
-  const applyMatrix = (map, regions, types) => {
-    if (!mapIsReadyRef.current || !layersReadyRef.current) return;
-    for (const rt of RAIL_TYPES) {
-      const active = types.includes(rt.id);
-      const layerFilter = active
-        ? buildLayerFilter(rt.filter, regions)
-        : ['==', ['get', 'macro_region'], '__none__'];
-      for (const id of [`lines-${rt.id}`, `line-labels-${rt.id}`, `dots-${rt.id}`, `labels-${rt.id}`]) {
-        if (!map.getLayer(id)) continue;
-        map.setFilter(id, layerFilter);
-      }
-    }
-  };
 
   const pushDataToMap = () => {
-    if (!canUseMap()) return;
     const map = mapRef.current;
+    if (!map || !layersReadyRef.current || !map.isStyleLoaded()) return;
     const { lines, stations } = dataRef.current;
     if (lines.length + stations.length > MAX_TOTAL_FEATURES) {
       console.warn('dataset too large — deselect some regions');
@@ -479,127 +487,32 @@ export default function RailwayMap() {
     applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
   };
 
-  const setupLayersAfterStyleLoad = (map) => {
-    const loc = matrixRef.current.locale;
-    const textField = loc === 'en' ? TEXT_EN : TEXT_ZH;
-    const lineTextField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
-    initRailwayStack(map, textField, lineTextField);
-    layersReadyRef.current = true;
-    applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
-    if (dataRef.current.lines.length) pushDataToMap();
-  };
+  const applyFiltersNow = useCallback((regions, types) => {
+    const map = mapRef.current;
+    if (!map || !layersReadyRef.current) return;
+    applyMatrix(map, regions, types);
+  }, []);
 
-  const loadRegionData = async (regionId, onProgress) => {
-    const region = REGIONS.find((r) => r.id === regionId);
-    if (!region || fetchedRegionsRef.current.has(regionId)) return;
-
-    let manifest = manifestRef.current;
-    if (!manifest && region.cleanMacro) {
-      try {
-        manifest = await fetchCleanJson('/data/clean-manifest.json');
-        manifestRef.current = manifest;
-      } catch (err) {
-        console.warn('manifest unavailable:', err.message);
-        manifest = null;
-      }
-    }
-
-    const jobs = [];
-    if (region.cleanFile) {
-      if (!loadedFilesRef.current.has(region.cleanFile)) {
-        jobs.push({ url: region.cleanFile, key: region.cleanFile, macro: regionId });
-      }
-    } else if (region.cleanMacro && manifest?.files) {
-      for (const entry of manifest.files.filter((f) => f.macro === region.cleanMacro)) {
-        if (!loadedFilesRef.current.has(entry.file)) {
-          jobs.push({ url: entry.file, key: entry.file, macro: regionId });
-        }
-      }
-    }
-
-    if (!jobs.length) {
-      fetchedRegionsRef.current.add(regionId);
-      return;
-    }
-
-    for (let i = 0; i < jobs.length; i++) {
-      const job = jobs[i];
-      loadedFilesRef.current.add(job.key);
-      try {
-        const raw = await fetchCleanJson(job.url);
-        await yieldMain();
-        const { lines, stations } = decodeRaw(raw, job.macro);
-        dataRef.current.lines = mergeFeatures(dataRef.current.lines, lines);
-        dataRef.current.stations = mergeFeatures(dataRef.current.stations, stations);
-      } catch (err) {
-        loadedFilesRef.current.delete(job.key);
-        console.warn(`skip ${job.url}:`, err.message);
-      }
-      if (onProgress) onProgress(i + 1, jobs.length);
-      await yieldMain();
-    }
-
-    fetchedRegionsRef.current.add(regionId);
-    pushDataToMap();
-    setDataReady(dataRef.current.lines.length > 0 || dataRef.current.stations.length > 0);
-  };
-
-  const loadNewRegions = async (regionIds) => {
-    if (loadingLockRef.current) return;
+  const queueRegionLoad = useCallback((regionIds) => {
     const pending = regionIds.filter((id) => !fetchedRegionsRef.current.has(id));
-    if (!pending.length) return;
-
-    loadingLockRef.current = true;
-    setIsLoading(true);
-    setLoadProgress(0);
-
-    let totalShards = 0;
-    let doneShards = 0;
-
-    let manifest = manifestRef.current;
-    const needsManifest = pending.some((id) => REGIONS.find((r) => r.id === id)?.cleanMacro);
-    if (!manifest && needsManifest) {
-      try {
-        manifest = await fetchCleanJson('/data/clean-manifest.json');
-        manifestRef.current = manifest;
-      } catch (err) {
-        console.warn('manifest unavailable:', err.message);
-      }
+    if (pending.length && loadPipelineRef.current) {
+      void loadPipelineRef.current(pending);
     }
+  }, []);
 
-    for (const id of pending) {
-      const r = REGIONS.find((x) => x.id === id);
-      if (!r) continue;
-      if (r.cleanFile) {
-        if (!loadedFilesRef.current.has(r.cleanFile)) totalShards += 1;
-      } else if (r.cleanMacro && manifest?.files) {
-        totalShards += manifest.files.filter(
-          (f) => f.macro === r.cleanMacro && !loadedFilesRef.current.has(f.file)
-        ).length;
-      }
-    }
-
-    try {
-      for (const id of pending) {
-        await loadRegionData(id, () => {
-          doneShards += 1;
-          const pct = totalShards
-            ? Math.round((doneShards / totalShards) * 100)
-            : Math.round((doneShards / pending.length) * 100);
-          setLoadProgress(pct);
-        });
-      }
-    } finally {
-      loadingLockRef.current = false;
-      setIsLoading(false);
-    }
-  };
+  const flyToRegion = useCallback((regionId) => {
+    const map = mapRef.current;
+    const region = REGIONS.find((r) => r.id === regionId);
+    if (!map || !region) return;
+    map.flyTo({ center: region.center, zoom: region.zoom, duration: 1200, essential: true });
+  }, []);
 
   useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return undefined;
+    if (isInitialized.current || !mapContainerRef.current) return undefined;
+    isInitialized.current = true;
 
     const map = new maplibregl.Map({
-      container: mapContainer.current,
+      container: mapContainerRef.current,
       style: STYLE_CARTO,
       center: [114.1694, 22.3193],
       zoom: 10,
@@ -607,24 +520,136 @@ export default function RailwayMap() {
       maxZoom: 18,
       fadeDuration: 0,
     });
+    mapRef.current = map;
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
 
-    const onMapReady = () => {
-      if (mapIsReadyRef.current) return;
-      mapIsReadyRef.current = true;
-      setMapIsReady(true);
-      setupLayersAfterStyleLoad(map);
-      loadNewRegions(matrixRef.current.regions);
+    const setupLayers = () => {
+      const loc = matrixRef.current.locale;
+      const textField = loc === 'en' ? TEXT_EN : TEXT_ZH;
+      const lineTextField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
+      initRailwayStack(map, textField, lineTextField);
+      layersReadyRef.current = true;
+      applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
+      if (dataRef.current.lines.length) pushDataToMap();
     };
 
-    map.on('load', onMapReady);
-    map.on('style.load', () => {
-      if (!mapIsReadyRef.current) return;
-      layersReadyRef.current = false;
-      setupLayersAfterStyleLoad(map);
+    const loadRegionData = async (regionId, onProgress) => {
+      const region = REGIONS.find((r) => r.id === regionId);
+      if (!region || fetchedRegionsRef.current.has(regionId)) return;
+
+      let manifest = manifestRef.current;
+      if (!manifest && region.cleanMacro) {
+        try {
+          manifest = await fetchCleanJson('/data/clean-manifest.json');
+          manifestRef.current = manifest;
+        } catch (err) {
+          console.warn('manifest unavailable:', err.message);
+        }
+      }
+
+      const jobs = [];
+      if (region.cleanFile) {
+        if (!loadedFilesRef.current.has(region.cleanFile)) {
+          jobs.push({ url: region.cleanFile, key: region.cleanFile, macro: regionId });
+        }
+      } else if (region.cleanMacro && manifest?.files) {
+        for (const entry of manifest.files.filter((f) => f.macro === region.cleanMacro)) {
+          if (!loadedFilesRef.current.has(entry.file)) {
+            jobs.push({ url: entry.file, key: entry.file, macro: regionId });
+          }
+        }
+      }
+
+      if (!jobs.length) {
+        fetchedRegionsRef.current.add(regionId);
+        return;
+      }
+
+      for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        loadedFilesRef.current.add(job.key);
+        try {
+          const raw = await fetchCleanJson(job.url);
+          await yieldMain();
+          const { lines, stations } = decodeRaw(raw, job.macro);
+          dataRef.current.lines = mergeFeatures(dataRef.current.lines, lines);
+          dataRef.current.stations = mergeFeatures(dataRef.current.stations, stations);
+        } catch (err) {
+          loadedFilesRef.current.delete(job.key);
+          console.warn(`skip ${job.url}:`, err.message);
+        }
+        if (onProgress) onProgress();
+        await yieldMain();
+      }
+
+      fetchedRegionsRef.current.add(regionId);
+      pushDataToMap();
+      setDataReady(dataRef.current.lines.length > 0 || dataRef.current.stations.length > 0);
+    };
+
+    loadPipelineRef.current = async (pending) => {
+      if (loadingLockRef.current || !pending.length) return;
+      loadingLockRef.current = true;
+      setDataLoading(true);
+      setLoadProgress(0);
+
+      let totalShards = 0;
+      let doneShards = 0;
+
+      let manifest = manifestRef.current;
+      const needsManifest = pending.some((id) => REGIONS.find((r) => r.id === id)?.cleanMacro);
+      if (!manifest && needsManifest) {
+        try {
+          manifest = await fetchCleanJson('/data/clean-manifest.json');
+          manifestRef.current = manifest;
+        } catch (err) {
+          console.warn('manifest unavailable:', err.message);
+        }
+      }
+
+      for (const id of pending) {
+        const r = REGIONS.find((x) => x.id === id);
+        if (!r) continue;
+        if (r.cleanFile) {
+          if (!loadedFilesRef.current.has(r.cleanFile)) totalShards += 1;
+        } else if (r.cleanMacro && manifest?.files) {
+          totalShards += manifest.files.filter(
+            (f) => f.macro === r.cleanMacro && !loadedFilesRef.current.has(f.file),
+          ).length;
+        }
+      }
+      if (!totalShards) totalShards = pending.length;
+
+      try {
+        for (const id of pending) {
+          await loadRegionData(id, () => {
+            doneShards += 1;
+            setLoadProgress(Math.round((doneShards / totalShards) * 100));
+          });
+        }
+      } finally {
+        loadingLockRef.current = false;
+        setDataLoading(false);
+      }
+    };
+
+    map.on('load', () => {
+      setupLayers();
+      setMapReady(true);
+      const pending = matrixRef.current.regions.filter((id) => !fetchedRegionsRef.current.has(id));
+      if (pending.length && loadPipelineRef.current) {
+        void loadPipelineRef.current(pending);
+      }
     });
+
+    map.on('style.load', () => {
+      if (!isInitialized.current) return;
+      layersReadyRef.current = false;
+      setupLayers();
+    });
+
     map.on('error', (e) => {
       const msg = e?.error?.message || '';
       if (!styleFallbackRef.current && /style|sprite|glyphs|fetch/i.test(msg)) {
@@ -632,6 +657,7 @@ export default function RailwayMap() {
         map.setStyle(STYLE_FALLBACK);
       }
     });
+
     map.on('zoom', () => {
       if (zoomRafRef.current) return;
       zoomRafRef.current = requestAnimationFrame(() => {
@@ -640,7 +666,6 @@ export default function RailwayMap() {
       });
     });
 
-    mapRef.current = map;
     fetch(STYLE_CARTO, { method: 'HEAD' }).catch(() => {
       if (!styleFallbackRef.current) {
         styleFallbackRef.current = true;
@@ -650,44 +675,41 @@ export default function RailwayMap() {
 
     return () => {
       if (zoomRafRef.current) cancelAnimationFrame(zoomRafRef.current);
+      loadPipelineRef.current = null;
       map.remove();
       mapRef.current = null;
-      mapIsReadyRef.current = false;
+      isInitialized.current = false;
       layersReadyRef.current = false;
       styleFallbackRef.current = false;
     };
   }, []);
 
   useEffect(() => {
-    if (!mapIsReadyRef.current) return;
-    const added = selectedRegions.filter((id) => !fetchedRegionsRef.current.has(id));
-    if (added.length) loadNewRegions(added);
-    if (canUseMap()) applyMatrix(mapRef.current, selectedRegions, selectedTypes);
-  }, [selectedRegions]);
-
-  useEffect(() => {
-    if (!canUseMap()) return;
-    applyMatrix(mapRef.current, selectedRegions, selectedTypes);
-  }, [selectedTypes]);
-
-  useEffect(() => {
-    if (!canUseMap()) return;
-    applyLocale(mapRef.current, locale);
+    const map = mapRef.current;
+    if (!map || !layersReadyRef.current) return;
+    applyLocale(map, locale);
+    matrixRef.current = { ...matrixRef.current, locale };
   }, [locale]);
 
-  const flyToRegion = useCallback((regionId) => {
-    const map = mapRef.current;
-    const region = REGIONS.find((r) => r.id === regionId);
-    if (!map || !mapIsReadyRef.current || !region) return;
-    map.flyTo({ center: region.center, zoom: region.zoom, duration: 1200, essential: true });
-  }, []);
+  const setRegions = (next, flyId) => {
+    matrixRef.current = { ...matrixRef.current, regions: next };
+    setSelectedRegions(next);
+    applyFiltersNow(next, matrixRef.current.types);
+    if (flyId) flyToRegion(flyId);
+    queueRegionLoad(next);
+  };
+
+  const setTypes = (next) => {
+    matrixRef.current = { ...matrixRef.current, types: next };
+    setSelectedTypes(next);
+    applyFiltersNow(matrixRef.current.regions, next);
+  };
 
   const toggleRegion = (id) => {
-    setSelectedRegions((prev) => {
-      const next = prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id];
-      if (!prev.includes(id)) flyToRegion(id);
-      return next;
-    });
+    const prev = matrixRef.current.regions;
+    const adding = !prev.includes(id);
+    const next = adding ? [...prev, id] : prev.filter((r) => r !== id);
+    setRegions(next, adding ? id : null);
   };
 
   return (
@@ -718,8 +740,8 @@ export default function RailwayMap() {
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-300">{t.regions}</h2>
               <div className="flex gap-1">
-                <button type="button" onClick={() => setSelectedRegions(ALL_REGION_IDS)} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-sky-400 hover:bg-slate-800">{t.selectAll}</button>
-                <button type="button" onClick={() => setSelectedRegions([])} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-800">{t.deselectAll}</button>
+                <button type="button" onClick={() => setRegions(ALL_REGION_IDS)} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-sky-400 hover:bg-slate-800">{t.selectAll}</button>
+                <button type="button" onClick={() => setRegions([])} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-800">{t.deselectAll}</button>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-1.5">
@@ -733,8 +755,8 @@ export default function RailwayMap() {
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-300">{t.types}</h2>
               <div className="flex gap-1">
-                <button type="button" onClick={() => setSelectedTypes(ALL_TYPE_IDS)} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-sky-400 hover:bg-slate-800">{t.selectAll}</button>
-                <button type="button" onClick={() => setSelectedTypes([])} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-800">{t.deselectAll}</button>
+                <button type="button" onClick={() => setTypes(ALL_TYPE_IDS)} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-sky-400 hover:bg-slate-800">{t.selectAll}</button>
+                <button type="button" onClick={() => setTypes([])} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-800">{t.deselectAll}</button>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-1.5">
@@ -742,7 +764,7 @@ export default function RailwayMap() {
                 <CheckChip
                   key={rt.id}
                   checked={selectedTypes.includes(rt.id)}
-                  onChange={() => setSelectedTypes((prev) => (prev.includes(rt.id) ? prev.filter((x) => x !== rt.id) : [...prev, rt.id]))}
+                  onChange={() => setTypes(selectedTypes.includes(rt.id) ? selectedTypes.filter((x) => x !== rt.id) : [...selectedTypes, rt.id])}
                   label={t.typeLabels[rt.id]}
                   color={rt.color}
                 />
@@ -780,26 +802,19 @@ export default function RailwayMap() {
         </div>
 
         <div className="mt-auto border-t border-slate-700/50 px-4 py-3">
-          {!mapIsReady ? (
-            <p className="text-[10px] text-slate-400">{t.mapLoading}</p>
-          ) : isLoading ? (
-            <div>
-              <p className="text-[10px] text-slate-400">{t.loading}</p>
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-800">
-                <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${loadProgress}%` }} />
-              </div>
-            </div>
-          ) : dataReady ? (
-            <p className="text-[10px] text-emerald-400/90">{t.ready}</p>
-          ) : (
-            <p className="text-[10px] text-slate-400">{t.loading}</p>
-          )}
+          <MapStatusBar
+            mapReady={mapReady}
+            dataLoading={dataLoading}
+            dataReady={dataReady}
+            progress={loadProgress}
+            labels={t}
+          />
         </div>
       </aside>
 
       <div className="relative min-h-0 min-w-0 flex-1">
-        <div ref={mapContainer} className="absolute inset-0 h-full w-full" />
-        {!mapIsReady && (
+        <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" />
+        {!mapReady && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-900">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
           </div>

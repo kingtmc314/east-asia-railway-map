@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * East Asia Railway — way-only Overpass pipeline (v6).
- * Direct way + node fetch — NO relations, NO >;, NO out body.
+ * East Asia Railway — way-only Overpass pipeline (v7).
+ * Multi-mirror round-robin + exponential backoff for 429 defence.
  *
  *   node scripts/fetch-and-clean-transit.js
- *   node scripts/fetch-and-clean-transit.js --region=macau
+ *   node scripts/fetch-and-clean-transit.js --region=taiwan
  *   node scripts/fetch-and-clean-transit.js --bootstrap
  */
 
@@ -15,15 +15,23 @@ const { feature } = require('topojson-client');
 
 const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'public', 'data');
-const USER_AGENT = 'east-asia-railway-map/6.0 (github.com/kingtmc314/east-asia-railway-map)';
-const REGION_PAUSE_MS = 10000;
-const TILE_PAUSE_MS = 10000;
+const USER_AGENT = 'east-asia-railway-map/7.0 (github.com/kingtmc314/east-asia-railway-map)';
+const REGION_PAUSE_MS = 15000;
+const TILE_PAUSE_MS = 15000;
 const MAX_SHARD_MB = 1.2;
+const MAX_RETRIES = 12;
 
-const OVERPASS_URLS = [
-  'https://overpass-api.de/api/interpreter',
+const OVERPASS_ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.nchc.org.tw/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
 ];
+
+const REGION_ENDPOINT_PREF = {
+  taiwan: 'https://overpass.nchc.org.tw/api/interpreter',
+  japan: 'https://overpass.kumi.systems/api/interpreter',
+};
 
 const RAIL_WAYS = /^(rail|subway|tram|light_rail|monorail|narrow_gauge)$/;
 const SKIP_SERVICE = /yard|siding|spur|switch|crossover/i;
@@ -146,6 +154,8 @@ const REGIONS = {
 const WAY_SEL = 'way["railway"~"rail|subway|light_rail|tram|monorail"]["service"!~"yard|siding|spur|switch"]["abandoned"!="yes"]["construction"!="yes"]';
 const NODE_SEL = 'node["railway"~"station|halt|tram_stop"]';
 
+let mirrorCursor = 0;
+
 const round5 = (n) => parseFloat(Number(n).toFixed(5));
 const roundCoords = (c) => c.map(([x, y]) => [round5(x), round5(y)]);
 
@@ -201,9 +211,8 @@ const normColor = (raw) => {
 const blob = (t) => `${t.operator || ''}${t.network || ''}${t.name || ''}${t.ref || ''}`.toLowerCase();
 
 function matchOperator(t) {
-  const hay = blob(t);
   for (const rule of OPERATOR_RULES) {
-    if (rule.re.test(hay)) return rule;
+    if (rule.re.test(blob(t))) return rule;
   }
   return null;
 }
@@ -365,32 +374,65 @@ out tags geom;`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function endpointOrder(regionId) {
+  const pref = REGION_ENDPOINT_PREF[regionId];
+  if (!pref) return OVERPASS_ENDPOINTS;
+  return [pref, ...OVERPASS_ENDPOINTS.filter((u) => u !== pref)];
+}
+
 function curlQuery(url, query) {
-  const out = execFileSync('curl', [
-    '-sfS', '--max-time', '180', '-A', USER_AGENT,
+  const raw = execFileSync('curl', [
+    '-sS', '--max-time', '180', '-A', USER_AGENT,
+    '-w', '\n__HTTP_STATUS__:%{http_code}',
     '-X', 'POST', '-H', 'Content-Type: application/x-www-form-urlencoded',
     '--data-urlencode', `data=${query}`, url,
   ], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
-  return JSON.parse(out).elements || [];
+
+  const marker = raw.lastIndexOf('\n__HTTP_STATUS__:');
+  const body = marker >= 0 ? raw.slice(0, marker) : raw;
+  const status = marker >= 0 ? raw.slice(marker + 17).trim() : '200';
+
+  if (status === '429' || status === '503' || status === '504') {
+    throw new Error(`HTTP ${status} from ${new URL(url).hostname}`);
+  }
+  if (!/^2\d\d$/.test(status)) {
+    throw new Error(`HTTP ${status} from ${new URL(url).hostname}`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new Error(`invalid JSON from ${new URL(url).hostname}`);
+  }
+  if (parsed.remark && /rate|429|too many/i.test(parsed.remark)) {
+    throw new Error(`HTTP 429 from ${new URL(url).hostname} — ${parsed.remark}`);
+  }
+  return parsed.elements || [];
 }
 
-async function overpass(query, attempt = 0) {
-  const url = OVERPASS_URLS[attempt % OVERPASS_URLS.length];
+async function overpass(query, regionId, attempt = 0) {
+  const order = endpointOrder(regionId);
+  const url = order[(mirrorCursor + attempt) % order.length];
+
   try {
-    return curlQuery(url, query);
+    const els = await curlQuery(url, query);
+    return els;
   } catch (err) {
-    if (attempt < 4) {
-      const wait = 10000 * (attempt + 1);
-      console.warn(`    retry ${attempt + 1} in ${wait / 1000}s — ${err.message}`);
-      await sleep(wait);
-      return overpass(query, attempt + 1);
-    }
-    throw err;
+    const retriable = /429|503|504|rate|timeout|timed out|reset|empty|invalid json/i.test(err.message);
+    if (!retriable || attempt >= MAX_RETRIES) throw err;
+
+    mirrorCursor = (mirrorCursor + 1) % OVERPASS_ENDPOINTS.length;
+    const backoffMs = 15000 * (attempt + 1);
+    const nextUrl = order[(mirrorCursor + attempt + 1) % order.length];
+    console.warn(`    ⚠ ${err.message} — mirror rotate → ${new URL(nextUrl).hostname}, backoff ${backoffMs / 1000}s`);
+    await sleep(backoffMs);
+    return overpass(query, regionId, attempt + 1);
   }
 }
 
-async function fetchTile(def, bbox) {
-  return overpass(buildQuery({ iso: def.iso || null, bbox }));
+async function fetchTile(def, bbox, regionId) {
+  return overpass(buildQuery({ iso: def.iso || null, bbox }), regionId);
 }
 
 function shrinkLines(lines, macro, factor) {
@@ -408,7 +450,7 @@ function writeShard(relPath, regionId, macro, lines, stations, source = 'overpas
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
   const pack = (lns) => JSON.stringify({
-    type: 'FeatureCollection', version: 6, region: regionId, macro_region: macro,
+    type: 'FeatureCollection', version: 7, region: regionId, macro_region: macro,
     updated: new Date().toISOString(), source,
     features: [...lns, ...ds], lines: lns, stations: ds,
     stats: { lines: lns.length, stations: ds.length },
@@ -447,7 +489,6 @@ function topoToFeatures(raw, macro, tol) {
     const legacy = f.properties?.railway_type;
     const mapped = legacy === 'hsr' ? 'highspeed' : legacy;
     const railway_type = mapped || classifyWay({ ...t, railway: rw });
-    const color = resolveColor(railway_type, macro, t) || normColor(f.properties?.color);
     const fake = { id: f.properties?.osm_id, type: 'way' };
     const push = (seg) => {
       const c = simplify(seg, tol);
@@ -466,8 +507,6 @@ function topoToFeatures(raw, macro, tol) {
     const c = f.geometry?.coordinates;
     if (!c) continue;
     const t = pick(f.properties);
-    const legacy = f.properties?.railway_type;
-    const mapped = legacy === 'hsr' ? 'highspeed' : legacy;
     stations.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [round5(c[0]), round5(c[1])] },
@@ -478,7 +517,7 @@ function topoToFeatures(raw, macro, tol) {
 }
 
 async function fetchRegion(id, def) {
-  console.log(`\n▶ ${id} (${def.bboxes.length} tile(s)) — way-only geom`);
+  console.log(`\n▶ ${id} (${def.bboxes.length} tile(s)) — way-only + mirror pool`);
   const results = [];
   const acc = { lines: [], stations: [] };
   let ok = false;
@@ -490,7 +529,7 @@ async function fetchRegion(id, def) {
     const rel = def.merged ? def.file : `clean/${slug}.json`;
     console.log(`  [${i + 1}/${def.bboxes.length}] ${rel}`);
     try {
-      const els = await fetchTile(def, bbox);
+      const els = await fetchTile(def, bbox, id);
       const chunk = osmToFeatures(els, id);
       if (chunk.lines.length || chunk.stations.length) ok = true;
       if (def.merged) {
@@ -552,7 +591,7 @@ function writeManifest(results) {
   const byFile = new Map((prev.files || []).map((f) => [f.file, f]));
   for (const f of files) byFile.set(f.file, f);
   fs.writeFileSync(manifestPath, JSON.stringify({
-    version: 6, updated: new Date().toISOString(), files: [...byFile.values()],
+    version: 7, updated: new Date().toISOString(), files: [...byFile.values()],
   }, null, 2));
   console.log(`\n✓ manifest — ${byFile.size} file(s)`);
 }
@@ -565,7 +604,7 @@ async function main() {
   const targets = only ? { [only]: REGIONS[only] } : REGIONS;
   if (only && !REGIONS[only]) { console.error(`Unknown: ${only}`); process.exit(1); }
 
-  console.log('East Asia Railway — way-only out tags geom pipeline v6');
+  console.log('East Asia Railway — way-only mirror pool pipeline v7');
   const results = [];
   for (const [id, def] of Object.entries(targets)) {
     if (bootstrapMode) {
