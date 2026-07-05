@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -11,6 +11,7 @@ const LABEL_FONTS = ['Noto Sans CJK JP Regular', 'Open Sans Regular'];
 const LINES_SOURCE = 'railway-lines';
 const STATIONS_SOURCE = 'railway-stations';
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
+const LEGEND_DIM = '#334155';
 
 const TEXT_ZH = [
   'coalesce',
@@ -21,7 +22,12 @@ const TEXT_ZH = [
   ['get', 'name'],
 ];
 
-const TEXT_EN = ['coalesce', ['get', 'name:en'], ['get', 'name']];
+const TEXT_EN = [
+  'coalesce',
+  ['get', 'name_en'],
+  ['get', 'name:en'],
+  ['get', 'name'],
+];
 
 const TYPE_PROP = ['coalesce', ['get', 'railway_type'], ['get', 'rail_type'], 'rail'];
 
@@ -31,48 +37,44 @@ const LINE_COLOR = [
   ['get', 'line_color'],
   ['get', 'colour'],
   [
-    'match',
-    ['get', 'macro_region'],
-    'hongkong',
-    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'subway', '#00A040', 'tram', '#F7931E', '#971018'],
-    'macau',
-    ['match', TYPE_PROP, 'highspeed', '#E60012', 'subway', '#0099CC', 'tram', '#9B1096', '#003DA5'],
-    'taiwan',
-    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'subway', '#007748', 'tram', '#FFD100', '#003366'],
-    'china',
-    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'subway', '#00A550', 'tram', '#FF6600', '#003DA5'],
-    'japan',
-    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'subway', '#009944', 'tram', '#FF8800', '#006633'],
-    ['match', TYPE_PROP, 'highspeed', '#FF3040', 'rail', '#3B82F6', 'subway', '#22C55E', 'tram', '#F97316', '#888888'],
+    'match', TYPE_PROP,
+    'highspeed', '#E60012',
+    'subway', '#009E60',
+    'tram', '#FFD700',
+  '#005A9C',
   ],
 ];
 
 const RAIL_TYPES = [
   {
     id: 'highspeed',
-    color: '#FF3040',
-    minzoom: 3,
+    color: '#E60012',
+    lineMinzoom: 3,
+    stationMinzoom: 4,
     lineWidth: ['interpolate', ['linear'], ['zoom'], 3, 2.5, 8, 3.5, 12, 5, 16, 6.5],
     filter: ['==', TYPE_PROP, 'highspeed'],
   },
   {
     id: 'rail',
-    color: '#3B82F6',
-    minzoom: 7,
+    color: '#005A9C',
+    lineMinzoom: 7,
+    stationMinzoom: 8,
     lineWidth: ['interpolate', ['linear'], ['zoom'], 7, 1.5, 10, 2.5, 14, 4, 18, 5.5],
     filter: ['==', TYPE_PROP, 'rail'],
   },
   {
     id: 'subway',
-    color: '#22C55E',
-    minzoom: 10,
+    color: '#009E60',
+    lineMinzoom: 10,
+    stationMinzoom: 10.5,
     lineWidth: ['interpolate', ['linear'], ['zoom'], 10, 2, 13, 3, 16, 4.5],
     filter: ['==', TYPE_PROP, 'subway'],
   },
   {
     id: 'tram',
-    color: '#F97316',
-    minzoom: 12.5,
+    color: '#FFD700',
+    lineMinzoom: 12.5,
+    stationMinzoom: 13,
     lineWidth: ['interpolate', ['linear'], ['zoom'], 12.5, 1.5, 14, 2.5, 18, 4],
     filter: ['==', TYPE_PROP, 'tram'],
   },
@@ -88,7 +90,7 @@ const REGIONS = [
 
 const ALL_REGION_IDS = REGIONS.map((r) => r.id);
 const ALL_TYPE_IDS = RAIL_TYPES.map((t) => t.id);
-const LABEL_LAYER_IDS = RAIL_TYPES.flatMap((t) => [`labels-${t.id}`]);
+const LABEL_LAYER_IDS = RAIL_TYPES.map((t) => `labels-${t.id}`);
 
 const I18N = {
   zh: {
@@ -102,7 +104,7 @@ const I18N = {
     deselectAll: '取消全選',
     types: '鐵路類型',
     legend: '動態圖例',
-    legendHint: '依勾選類型即時更新',
+    legendHint: '勾選類型亮起官方色 · 取消則變灰',
     zoom: '縮放',
     loading: '載入鐵路資料中…',
     ready: '資料就緒 · GPU 硬體加速',
@@ -114,7 +116,7 @@ const I18N = {
       highspeed: '高鐵 / 新幹線', rail: '普通鐵路 / 國鐵', subway: '地鐵 / 捷運', tram: '輕軌 / 路面電車',
     },
     typeDesc: {
-      highspeed: 'Z3+ 全球長途骨幹', rail: 'Z7+ 城際幹線', subway: 'Z10+ 城市軌道', tram: 'Z12.5+ 社區細節',
+      highspeed: '線 Z3 · 站 Z4', rail: '線 Z7 · 站 Z8', subway: '線 Z10 · 站 Z10.5', tram: '線 Z12.5 · 站 Z13',
     },
   },
   en: {
@@ -128,7 +130,7 @@ const I18N = {
     deselectAll: 'Clear all',
     types: 'Railway types',
     legend: 'Live legend',
-    legendHint: 'Updates with your selection',
+    legendHint: 'Active types glow · inactive dim to grey',
     zoom: 'Zoom',
     loading: 'Loading railway data…',
     ready: 'Ready · GPU-accelerated',
@@ -140,7 +142,7 @@ const I18N = {
       highspeed: 'High-speed / Shinkansen', rail: 'Conventional rail', subway: 'Metro / Subway', tram: 'Light rail / Tram',
     },
     typeDesc: {
-      highspeed: 'Z3+ long-distance backbone', rail: 'Z7+ intercity lines', subway: 'Z10+ urban metro', tram: 'Z12.5+ neighbourhood detail',
+      highspeed: 'Line Z3 · Stn Z4', rail: 'Line Z7 · Stn Z8', subway: 'Line Z10 · Stn Z10.5', tram: 'Line Z12.5 · Stn Z13',
     },
   },
 };
@@ -154,14 +156,13 @@ function normalizeType(raw) {
 function decodeRaw(raw, macroRegion) {
   let lines = [];
   let stations = [];
-
   if (Array.isArray(raw.lines)) lines = raw.lines;
   if (Array.isArray(raw.stations)) stations = raw.stations;
   if (Array.isArray(raw.features)) {
     for (const f of raw.features) {
-      const t = f.geometry?.type;
-      if (t === 'LineString' || t === 'MultiLineString') lines.push(f);
-      else if (t === 'Point') stations.push(f);
+      const gt = f.geometry?.type;
+      if (gt === 'LineString' || gt === 'MultiLineString') lines.push(f);
+      else if (gt === 'Point') stations.push(f);
     }
   }
 
@@ -180,20 +181,20 @@ function decodeRaw(raw, macroRegion) {
     };
   };
 
-  const normStation = (f) => {
-    const railway_type = normalizeType(f.properties?.railway_type || f.properties?.rail_type);
-    return {
-      ...f,
-      properties: { ...f.properties, macro_region: f.properties?.macro_region || macroRegion, railway_type },
-    };
-  };
+  const normStation = (f) => ({
+    ...f,
+    properties: {
+      ...f.properties,
+      macro_region: f.properties?.macro_region || macroRegion,
+      railway_type: normalizeType(f.properties?.railway_type || f.properties?.rail_type),
+    },
+  });
 
   return {
     lines: lines.flatMap((f) => {
       if (f.geometry?.type === 'MultiLineString') {
         return f.geometry.coordinates.map((seg) => normLine({
-          ...f,
-          geometry: { type: 'LineString', coordinates: seg },
+          ...f, geometry: { type: 'LineString', coordinates: seg },
         }));
       }
       return [normLine(f)];
@@ -206,8 +207,8 @@ function mergeFeatures(existing, incoming) {
   const seen = new Set(existing.map((f) => `${f.properties?.osm_type}/${f.properties?.osm_id}`));
   const out = [...existing];
   for (const f of incoming) {
-    const key = `${f.properties?.osm_type}/${f.properties?.osm_id}`;
-    if (!seen.has(key)) { seen.add(key); out.push(f); }
+    const k = `${f.properties?.osm_type}/${f.properties?.osm_id}`;
+    if (!seen.has(k)) { seen.add(k); out.push(f); }
   }
   return out;
 }
@@ -218,17 +219,19 @@ async function fetchCleanJson(url) {
   return res.json();
 }
 
+const yieldMain = () => new Promise((r) => { setTimeout(r, 0); });
+
 function buildRegionFilter(selected) {
   if (!selected.length) return ['==', ['get', 'macro_region'], '__none__'];
   return ['in', ['get', 'macro_region'], ['literal', selected]];
 }
 
-function buildLayerFilter(typeFilter, selectedRegions) {
-  return ['all', typeFilter, buildRegionFilter(selectedRegions)];
+function buildLayerFilter(typeFilter, regions) {
+  return ['all', typeFilter, buildRegionFilter(regions)];
 }
 
-function labelLayout(minzoom) {
-  const dense = minzoom >= 12.5;
+function labelLayout(stationMinzoom) {
+  const dense = stationMinzoom >= 12.5;
   return {
     'symbol-placement': 'point',
     'text-font': LABEL_FONTS,
@@ -244,51 +247,51 @@ function labelLayout(minzoom) {
 }
 
 function addRailLayers(map, textField) {
-  for (const t of RAIL_TYPES) {
-    const lineId = `lines-${t.id}`;
+  for (const rt of RAIL_TYPES) {
+    const lineId = `lines-${rt.id}`;
     if (!map.getLayer(lineId)) {
       map.addLayer({
         id: lineId,
         type: 'line',
         source: LINES_SOURCE,
-        minzoom: t.minzoom,
-        filter: t.filter,
+        minzoom: rt.lineMinzoom,
+        filter: rt.filter,
         paint: {
           'line-color': LINE_COLOR,
           'line-opacity': 0.94,
           'line-cap': 'round',
           'line-join': 'round',
-          'line-width': t.lineWidth,
+          'line-width': rt.lineWidth,
         },
       });
     }
 
-    const dotId = `dots-${t.id}`;
+    const dotId = `dots-${rt.id}`;
     if (!map.getLayer(dotId)) {
       map.addLayer({
         id: dotId,
         type: 'circle',
         source: STATIONS_SOURCE,
-        minzoom: t.minzoom,
-        filter: ['==', TYPE_PROP, t.id],
+        minzoom: rt.stationMinzoom,
+        filter: ['==', TYPE_PROP, rt.id],
         paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], t.minzoom, 3, 14, 5, 18, 7],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], rt.stationMinzoom, 3, 14, 5, 18, 7],
           'circle-color': '#FFFFFF',
-          'circle-stroke-color': ['coalesce', ['get', 'color'], t.color],
+          'circle-stroke-color': ['coalesce', ['get', 'color'], rt.color],
           'circle-stroke-width': 2,
         },
       });
     }
 
-    const labelId = `labels-${t.id}`;
+    const labelId = `labels-${rt.id}`;
     if (!map.getLayer(labelId)) {
       map.addLayer({
         id: labelId,
         type: 'symbol',
         source: STATIONS_SOURCE,
-        minzoom: t.minzoom,
-        filter: ['==', TYPE_PROP, t.id],
-        layout: { ...labelLayout(t.minzoom), 'text-field': textField },
+        minzoom: rt.stationMinzoom,
+        filter: ['==', TYPE_PROP, rt.id],
+        layout: { ...labelLayout(rt.stationMinzoom), 'text-field': textField },
         paint: {
           'text-color': '#F8FAFC',
           'text-halo-color': '#0F172A',
@@ -338,10 +341,12 @@ function CheckChip({ checked, onChange, label, color }) {
     >
       <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
       <span
-        className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white/20"
-        style={{ backgroundColor: checked ? color : '#334155' }}
+        className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white/20 transition-colors duration-150"
+        style={{ backgroundColor: checked ? color : LEGEND_DIM }}
       />
-      <span className={`text-xs font-medium ${checked ? 'text-slate-100' : 'text-slate-400'}`}>{label}</span>
+      <span className={`text-xs font-medium transition-colors duration-150 ${checked ? 'text-slate-100' : 'text-slate-400'}`}>
+        {label}
+      </span>
     </label>
   );
 }
@@ -412,7 +417,7 @@ export default function RailwayMap() {
     if (dataRef.current.lines.length) pushDataToMap();
   }, [applyMatrix, pushDataToMap]);
 
-  const loadRegion = useCallback(async (regionId) => {
+  const loadRegion = useCallback(async (regionId, onProgress) => {
     const region = REGIONS.find((r) => r.id === regionId);
     if (!region) return;
 
@@ -436,31 +441,55 @@ export default function RailwayMap() {
     }
     if (!jobs.length) return;
 
-    await Promise.all(
-      jobs.map(async (job) => {
-        loadedRef.current.add(job.key);
-        try {
-          const raw = await fetchCleanJson(job.url);
-          const { lines, stations } = decodeRaw(raw, job.macro);
-          dataRef.current.lines = mergeFeatures(dataRef.current.lines, lines);
-          dataRef.current.stations = mergeFeatures(dataRef.current.stations, stations);
-        } catch (err) {
-          loadedRef.current.delete(job.key);
-          console.warn(`skip ${job.url}:`, err.message);
-        }
-      })
-    );
-  }, []);
+    for (let i = 0; i < jobs.length; i++) {
+      const job = jobs[i];
+      loadedRef.current.add(job.key);
+      try {
+        const raw = await fetchCleanJson(job.url);
+        const { lines, stations } = decodeRaw(raw, job.macro);
+        dataRef.current.lines = mergeFeatures(dataRef.current.lines, lines);
+        dataRef.current.stations = mergeFeatures(dataRef.current.stations, stations);
+        if (canUseMap()) pushDataToMap();
+      } catch (err) {
+        loadedRef.current.delete(job.key);
+        console.warn(`skip ${job.url}:`, err.message);
+      }
+      if (onProgress) onProgress(i + 1, jobs.length);
+      await yieldMain();
+    }
+  }, [canUseMap, pushDataToMap]);
 
   const loadRegions = useCallback(async (regionIds) => {
     if (!regionIds.length) return;
-    let done = 0;
+    let totalShards = 0;
+    let doneShards = 0;
+
+    const manifest = manifestRef.current
+      || await fetchCleanJson('/data/clean-manifest.json').then((m) => {
+        manifestRef.current = m;
+        return m;
+      }).catch(() => null);
+
     for (const id of regionIds) {
-      await loadRegion(id);
-      done += 1;
-      setLoadProgress(Math.round((done / regionIds.length) * 100));
-      if (canUseMap()) pushDataToMap();
+      const r = REGIONS.find((x) => x.id === id);
+      if (!r) continue;
+      if (r.cleanFile) {
+        if (!loadedRef.current.has(r.cleanFile)) totalShards += 1;
+      } else if (r.cleanMacro && manifest?.files) {
+        totalShards += manifest.files.filter(
+          (f) => f.macro === r.cleanMacro && !loadedRef.current.has(f.file)
+        ).length;
+      }
     }
+
+    for (const id of regionIds) {
+      await loadRegion(id, (done, batch) => {
+        doneShards += 1;
+        const pct = totalShards ? Math.round((doneShards / totalShards) * 100) : Math.round((done / batch) * 100);
+        setLoadProgress(pct);
+      });
+    }
+
     setDataReady(dataRef.current.lines.length > 0 || dataRef.current.stations.length > 0);
     if (canUseMap()) pushDataToMap();
   }, [loadRegion, canUseMap, pushDataToMap]);
@@ -552,14 +581,9 @@ export default function RailwayMap() {
     });
   };
 
-  const activeLegend = useMemo(
-    () => RAIL_TYPES.filter((rt) => selectedTypes.includes(rt.id)),
-    [selectedTypes]
-  );
-
   return (
     <div className="relative flex h-full w-full bg-slate-950">
-      <aside className="relative z-20 flex w-[min(100%,320px)] shrink-0 flex-col border-r border-slate-700/50 bg-slate-900/80 backdrop-blur-md">
+      <aside className="relative z-20 flex w-[min(100%,320px)] shrink-0 flex-col border-r border-slate-700/50 bg-slate-900/85 backdrop-blur-md">
         <div className="flex flex-col gap-5 overflow-y-auto p-4 sm:p-5">
           <header>
             <div className="mb-1 flex items-start justify-between gap-2">
@@ -620,27 +644,29 @@ export default function RailwayMap() {
           <section className="rounded-xl border border-slate-700/50 bg-slate-950/60 p-3">
             <h2 className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-slate-300">{t.legend}</h2>
             <p className="mb-3 text-[10px] text-slate-500">{t.legendHint}</p>
-            {activeLegend.length === 0 ? (
-              <p className="text-xs text-slate-600">—</p>
-            ) : (
-              <ul className="space-y-2.5">
-                {activeLegend.map((rt) => (
-                  <li key={rt.id} className="flex items-center gap-3">
+            <ul className="space-y-2.5">
+              {RAIL_TYPES.map((rt) => {
+                const active = selectedTypes.includes(rt.id);
+                const barColor = active ? rt.color : LEGEND_DIM;
+                return (
+                  <li key={rt.id} className="flex items-center gap-3 transition-opacity duration-150" style={{ opacity: active ? 1 : 0.55 }}>
                     <span
-                      className="h-1 w-10 shrink-0 rounded-full"
+                      className="h-1 w-10 shrink-0 rounded-full transition-all duration-150"
                       style={{
-                        backgroundColor: rt.color,
-                        boxShadow: rt.id === 'highspeed' ? `0 0 8px ${rt.color}88` : undefined,
+                        backgroundColor: barColor,
+                        boxShadow: active && rt.id === 'highspeed' ? `0 0 8px ${rt.color}88` : undefined,
                       }}
                     />
                     <div>
-                      <p className="text-xs font-medium text-slate-200">{t.typeLabels[rt.id]}</p>
+                      <p className={`text-xs font-medium transition-colors duration-150 ${active ? 'text-slate-200' : 'text-slate-500'}`}>
+                        {t.typeLabels[rt.id]}
+                      </p>
                       <p className="text-[10px] text-slate-500">{t.typeDesc[rt.id]}</p>
                     </div>
                   </li>
-                ))}
-              </ul>
-            )}
+                );
+              })}
+            </ul>
           </section>
         </div>
 
