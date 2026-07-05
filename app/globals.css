@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.maplibregl-popup-content {
+  font-family: system-ui, -apple-system, sans-serif;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
+}

@@ -1,0 +1,17 @@
+# Raw GeoJSON（體積大，不進版控）
+public/data/raw/
+
+# Legacy monolithic GeoJSON（已由 TopoJSON 取代）
+public/data/taiwan.json
+public/data/hongkong.json
+public/data/macau.json
+public/data/china.json
+public/data/japan.json
+
+# dependencies
+/node_modules
+/.next/
+/out/
+.vercel
+.DS_Store
+.env*.local

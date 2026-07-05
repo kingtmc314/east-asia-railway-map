@@ -1,0 +1,474 @@
+{
+  "version": 2,
+  "updated": "2026-07-05T09:22:06.649Z",
+  "regions": [
+    {
+      "id": "taiwan",
+      "label": "台灣",
+      "file": "/data/taiwan.topo.json",
+      "bbox": [
+        119.3,
+        21.9,
+        122,
+        25.3
+      ],
+      "lines": 7909,
+      "stations": 558
+    },
+    {
+      "id": "hongkong",
+      "label": "香港",
+      "file": "/data/hongkong.topo.json",
+      "bbox": [
+        113.83,
+        22.15,
+        114.45,
+        22.57
+      ],
+      "lines": 2568,
+      "stations": 283
+    },
+    {
+      "id": "macau",
+      "label": "澳門",
+      "file": "/data/macau.topo.json",
+      "bbox": [
+        113.52,
+        22.1,
+        113.62,
+        22.22
+      ],
+      "lines": 32,
+      "stations": 19
+    },
+    {
+      "id": "japan",
+      "label": "日本",
+      "file": "/data/japan.topo.json",
+      "bbox": [
+        124,
+        24,
+        146,
+        46
+      ],
+      "lines": 133693,
+      "stations": 8972
+    },
+    {
+      "id": "china-heilongjiang",
+      "label": "黑龙江",
+      "file": "/data/china/heilongjiang.topo.json",
+      "bbox": [
+        121,
+        43.2,
+        135.1,
+        53.6
+      ],
+      "lines": 24801,
+      "stations": 952
+    },
+    {
+      "id": "china-jilin",
+      "label": "吉林",
+      "file": "/data/china/jilin.topo.json",
+      "bbox": [
+        121.8,
+        40.5,
+        131.3,
+        46.3
+      ],
+      "lines": 27911,
+      "stations": 1105
+    },
+    {
+      "id": "china-liaoning",
+      "label": "辽宁",
+      "file": "/data/china/liaoning.topo.json",
+      "bbox": [
+        118.5,
+        38.7,
+        125.5,
+        43.5
+      ],
+      "lines": 27507,
+      "stations": 879
+    },
+    {
+      "id": "china-inner-mongolia-east",
+      "label": "内蒙古东",
+      "file": "/data/china/inner-mongolia-east.topo.json",
+      "bbox": [
+        108,
+        37,
+        126,
+        50
+      ],
+      "lines": 115277,
+      "stations": 3716
+    },
+    {
+      "id": "china-inner-mongolia-west",
+      "label": "内蒙古西",
+      "file": "/data/china/inner-mongolia-west.topo.json",
+      "bbox": [
+        97,
+        37,
+        108,
+        50
+      ],
+      "lines": 11466,
+      "stations": 330
+    },
+    {
+      "id": "china-beijing",
+      "label": "北京",
+      "file": "/data/china/beijing.topo.json",
+      "bbox": [
+        115.4,
+        39.4,
+        117.5,
+        41.1
+      ],
+      "lines": 16218,
+      "stations": 641
+    },
+    {
+      "id": "china-tianjin",
+      "label": "天津",
+      "file": "/data/china/tianjin.topo.json",
+      "bbox": [
+        116.7,
+        38.5,
+        118.1,
+        40.3
+      ],
+      "lines": 9282,
+      "stations": 341
+    },
+    {
+      "id": "china-hebei",
+      "label": "河北",
+      "file": "/data/china/hebei.topo.json",
+      "bbox": [
+        113.4,
+        36,
+        119.9,
+        42.6
+      ],
+      "lines": 71544,
+      "stations": 1963
+    },
+    {
+      "id": "china-shanxi",
+      "label": "山西",
+      "file": "/data/china/shanxi.topo.json",
+      "bbox": [
+        110.2,
+        34.5,
+        114.6,
+        40.7
+      ],
+      "lines": 37663,
+      "stations": 1201
+    },
+    {
+      "id": "china-shandong",
+      "label": "山东",
+      "file": "/data/china/shandong.topo.json",
+      "bbox": [
+        114.8,
+        34.4,
+        122.7,
+        38.4
+      ],
+      "lines": 37289,
+      "stations": 990
+    },
+    {
+      "id": "china-henan",
+      "label": "河南",
+      "file": "/data/china/henan.topo.json",
+      "bbox": [
+        110.3,
+        31.4,
+        116.7,
+        36.4
+      ],
+      "lines": 29854,
+      "stations": 1022
+    },
+    {
+      "id": "china-shaanxi",
+      "label": "陕西",
+      "file": "/data/china/shaanxi.topo.json",
+      "bbox": [
+        105.5,
+        31.7,
+        111.3,
+        39.6
+      ],
+      "lines": 30345,
+      "stations": 1070
+    },
+    {
+      "id": "china-gansu",
+      "label": "甘肃",
+      "file": "/data/china/gansu.topo.json",
+      "bbox": [
+        92.3,
+        32.6,
+        108.7,
+        42.8
+      ],
+      "lines": 30083,
+      "stations": 934
+    },
+    {
+      "id": "china-ningxia",
+      "label": "宁夏",
+      "file": "/data/china/ningxia.topo.json",
+      "bbox": [
+        104.2,
+        35.2,
+        107.6,
+        39.4
+      ],
+      "lines": 5785,
+      "stations": 195
+    },
+    {
+      "id": "china-qinghai",
+      "label": "青海",
+      "file": "/data/china/qinghai.topo.json",
+      "bbox": [
+        89.4,
+        31.6,
+        103,
+        39.2
+      ],
+      "lines": 6809,
+      "stations": 229
+    },
+    {
+      "id": "china-xinjiang",
+      "label": "新疆",
+      "file": "/data/china/xinjiang.topo.json",
+      "bbox": [
+        73.5,
+        34.3,
+        96.4,
+        49.2
+      ],
+      "lines": 14817,
+      "stations": 561
+    },
+    {
+      "id": "china-tibet",
+      "label": "西藏",
+      "file": "/data/china/tibet.topo.json",
+      "bbox": [
+        78.4,
+        26.8,
+        99.1,
+        36.5
+      ],
+      "lines": 3097,
+      "stations": 131
+    },
+    {
+      "id": "china-sichuan",
+      "label": "四川",
+      "file": "/data/china/sichuan.topo.json",
+      "bbox": [
+        97.3,
+        26,
+        108.5,
+        34.3
+      ],
+      "lines": 45872,
+      "stations": 1864
+    },
+    {
+      "id": "china-chongqing",
+      "label": "重庆",
+      "file": "/data/china/chongqing.topo.json",
+      "bbox": [
+        105.3,
+        28.1,
+        110.2,
+        32.2
+      ],
+      "lines": 18252,
+      "stations": 624
+    },
+    {
+      "id": "china-yunnan",
+      "label": "云南",
+      "file": "/data/china/yunnan.topo.json",
+      "bbox": [
+        97.5,
+        21.1,
+        106.2,
+        29.2
+      ],
+      "lines": 20982,
+      "stations": 740
+    },
+    {
+      "id": "china-guizhou",
+      "label": "贵州",
+      "file": "/data/china/guizhou.topo.json",
+      "bbox": [
+        103.6,
+        24.6,
+        109.6,
+        29.2
+      ],
+      "lines": 19818,
+      "stations": 646
+    },
+    {
+      "id": "china-guangxi",
+      "label": "广西",
+      "file": "/data/china/guangxi.topo.json",
+      "bbox": [
+        104.4,
+        20.9,
+        112.1,
+        26.4
+      ],
+      "lines": 20071,
+      "stations": 644
+    },
+    {
+      "id": "china-hainan",
+      "label": "海南",
+      "file": "/data/china/hainan.topo.json",
+      "bbox": [
+        108.6,
+        18.1,
+        111.1,
+        20.2
+      ],
+      "lines": 1998,
+      "stations": 51
+    },
+    {
+      "id": "china-guangdong",
+      "label": "广东",
+      "file": "/data/china/guangdong.topo.json",
+      "bbox": [
+        109.6,
+        20.2,
+        117.3,
+        25.5
+      ],
+      "lines": 29649,
+      "stations": 1579
+    },
+    {
+      "id": "china-hunan",
+      "label": "湖南",
+      "file": "/data/china/hunan.topo.json",
+      "bbox": [
+        108.8,
+        24.6,
+        114.3,
+        30.1
+      ],
+      "lines": 25347,
+      "stations": 708
+    },
+    {
+      "id": "china-hubei",
+      "label": "湖北",
+      "file": "/data/china/hubei.topo.json",
+      "bbox": [
+        108.3,
+        29,
+        116.1,
+        33.3
+      ],
+      "lines": 27525,
+      "stations": 845
+    },
+    {
+      "id": "china-jiangxi",
+      "label": "江西",
+      "file": "/data/china/jiangxi.topo.json",
+      "bbox": [
+        113.6,
+        24.5,
+        118.5,
+        30.1
+      ],
+      "lines": 22587,
+      "stations": 703
+    },
+    {
+      "id": "china-anhui",
+      "label": "安徽",
+      "file": "/data/china/anhui.topo.json",
+      "bbox": [
+        114.9,
+        29.4,
+        119.7,
+        34.7
+      ],
+      "lines": 25734,
+      "stations": 1410
+    },
+    {
+      "id": "china-jiangsu",
+      "label": "江苏",
+      "file": "/data/china/jiangsu.topo.json",
+      "bbox": [
+        116.4,
+        30.7,
+        121.9,
+        35.1
+      ],
+      "lines": 31847,
+      "stations": 2193
+    },
+    {
+      "id": "china-shanghai",
+      "label": "上海",
+      "file": "/data/china/shanghai.topo.json",
+      "bbox": [
+        120.8,
+        30.7,
+        122,
+        31.9
+      ],
+      "lines": 6659,
+      "stations": 429
+    },
+    {
+      "id": "china-zhejiang",
+      "label": "浙江",
+      "file": "/data/china/zhejiang.topo.json",
+      "bbox": [
+        118,
+        27,
+        123,
+        31.2
+      ],
+      "lines": 21708,
+      "stations": 1175
+    },
+    {
+      "id": "china-fujian",
+      "label": "福建",
+      "file": "/data/china/fujian.topo.json",
+      "bbox": [
+        116,
+        23.5,
+        120.5,
+        28.3
+      ],
+      "lines": 13758,
+      "stations": 521
+    }
+  ]
+}

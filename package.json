@@ -1,0 +1,30 @@
+{
+  "name": "east-asia-railway-map",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "fetch-data": "node scripts/fetch-railway-data.mjs",
+    "build-data": "node scripts/build-data.mjs",
+    "build-data:raw": "node scripts/build-data.mjs --from-raw"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "maplibre-gl": "^4.7.1",
+    "next": "^15.1.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "topojson-client": "^3.1.0",
+    "topojson-server": "^3.0.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.1.3",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  }
+}
