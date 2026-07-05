@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "updated": "2026-07-05T09:22:06.649Z",
+  "version": 3,
+  "updated": "2026-07-05T09:49:38.468Z",
   "regions": [
     {
       "id": "taiwan",
@@ -42,17 +42,82 @@
       "stations": 19
     },
     {
-      "id": "japan",
-      "label": "日本",
-      "file": "/data/japan.topo.json",
+      "id": "japan-hokkaido",
+      "label": "北海道",
+      "file": "/data/japan/hokkaido.topo.json",
+      "bbox": [
+        139,
+        41,
+        146,
+        45.9
+      ],
+      "lines": 6437,
+      "stations": 377
+    },
+    {
+      "id": "japan-tohoku",
+      "label": "東北",
+      "file": "/data/japan/tohoku.topo.json",
+      "bbox": [
+        137,
+        36,
+        141.5,
+        41.5
+      ],
+      "lines": 12623,
+      "stations": 850
+    },
+    {
+      "id": "japan-kanto-chubu",
+      "label": "關東・中部",
+      "file": "/data/japan/kanto-chubu.topo.json",
+      "bbox": [
+        136,
+        34.5,
+        141,
+        37.5
+      ],
+      "lines": 63673,
+      "stations": 4219
+    },
+    {
+      "id": "japan-kansai-chugoku",
+      "label": "關西・中國",
+      "file": "/data/japan/kansai-chugoku.topo.json",
+      "bbox": [
+        131,
+        33.5,
+        137.5,
+        36
+      ],
+      "lines": 30670,
+      "stations": 2090
+    },
+    {
+      "id": "japan-shikoku",
+      "label": "四國",
+      "file": "/data/japan/shikoku.topo.json",
+      "bbox": [
+        132,
+        32.5,
+        134.5,
+        34.5
+      ],
+      "lines": 7230,
+      "stations": 496
+    },
+    {
+      "id": "japan-kyushu-okinawa",
+      "label": "九州・沖繩",
+      "file": "/data/japan/kyushu-okinawa.topo.json",
       "bbox": [
         124,
         24,
-        146,
-        46
+        132.5,
+        34
       ],
-      "lines": 133693,
-      "stations": 8972
+      "lines": 13052,
+      "stations": 940
     },
     {
       "id": "china-heilongjiang",
@@ -64,8 +129,8 @@
         135.1,
         53.6
       ],
-      "lines": 24801,
-      "stations": 952
+      "lines": 6194,
+      "stations": 240
     },
     {
       "id": "china-jilin",
@@ -77,8 +142,8 @@
         131.3,
         46.3
       ],
-      "lines": 27911,
-      "stations": 1105
+      "lines": 16445,
+      "stations": 689
     },
     {
       "id": "china-liaoning",
@@ -90,21 +155,60 @@
         125.5,
         43.5
       ],
-      "lines": 27507,
-      "stations": 879
+      "lines": 20301,
+      "stations": 751
     },
     {
-      "id": "china-inner-mongolia-east",
-      "label": "内蒙古东",
-      "file": "/data/china/inner-mongolia-east.topo.json",
+      "id": "china-inner-mongolia-ne",
+      "label": "内蒙古东北",
+      "file": "/data/china/inner-mongolia-ne.topo.json",
       "bbox": [
-        108,
-        37,
+        117,
+        42,
         126,
         50
       ],
-      "lines": 115277,
-      "stations": 3716
+      "lines": 7463,
+      "stations": 240
+    },
+    {
+      "id": "china-inner-mongolia-nw",
+      "label": "内蒙古西北",
+      "file": "/data/china/inner-mongolia-nw.topo.json",
+      "bbox": [
+        108,
+        42,
+        117,
+        50
+      ],
+      "lines": 907,
+      "stations": 60
+    },
+    {
+      "id": "china-inner-mongolia-central",
+      "label": "内蒙古中部",
+      "file": "/data/china/inner-mongolia-central.topo.json",
+      "bbox": [
+        111,
+        38,
+        119,
+        43
+      ],
+      "lines": 148,
+      "stations": 18
+    },
+    {
+      "id": "china-inner-mongolia-south",
+      "label": "内蒙古南部",
+      "file": "/data/china/inner-mongolia-south.topo.json",
+      "bbox": [
+        108,
+        37,
+        115,
+        42
+      ],
+      "lines": 8929,
+      "stations": 270
     },
     {
       "id": "china-inner-mongolia-west",
@@ -116,8 +220,8 @@
         108,
         50
       ],
-      "lines": 11466,
-      "stations": 330
+      "lines": 4912,
+      "stations": 132
     },
     {
       "id": "china-beijing",
@@ -129,8 +233,8 @@
         117.5,
         41.1
       ],
-      "lines": 16218,
-      "stations": 641
+      "lines": 14680,
+      "stations": 608
     },
     {
       "id": "china-tianjin",
@@ -142,21 +246,34 @@
         118.1,
         40.3
       ],
-      "lines": 9282,
+      "lines": 9233,
       "stations": 341
     },
     {
-      "id": "china-hebei",
-      "label": "河北",
-      "file": "/data/china/hebei.topo.json",
+      "id": "china-hebei-north",
+      "label": "河北北",
+      "file": "/data/china/hebei-north.topo.json",
+      "bbox": [
+        113.4,
+        39,
+        119.9,
+        42.6
+      ],
+      "lines": 17749,
+      "stations": 349
+    },
+    {
+      "id": "china-hebei-south",
+      "label": "河北南",
+      "file": "/data/china/hebei-south.topo.json",
       "bbox": [
         113.4,
         36,
         119.9,
-        42.6
+        39
       ],
-      "lines": 71544,
-      "stations": 1963
+      "lines": 29842,
+      "stations": 665
     },
     {
       "id": "china-shanxi",
@@ -168,8 +285,8 @@
         114.6,
         40.7
       ],
-      "lines": 37663,
-      "stations": 1201
+      "lines": 28194,
+      "stations": 977
     },
     {
       "id": "china-shandong",
@@ -181,8 +298,8 @@
         122.7,
         38.4
       ],
-      "lines": 37289,
-      "stations": 990
+      "lines": 15614,
+      "stations": 484
     },
     {
       "id": "china-henan",
@@ -194,8 +311,8 @@
         116.7,
         36.4
       ],
-      "lines": 29854,
-      "stations": 1022
+      "lines": 10197,
+      "stations": 292
     },
     {
       "id": "china-shaanxi",
@@ -207,8 +324,8 @@
         111.3,
         39.6
       ],
-      "lines": 30345,
-      "stations": 1070
+      "lines": 15304,
+      "stations": 642
     },
     {
       "id": "china-gansu",
@@ -220,8 +337,8 @@
         108.7,
         42.8
       ],
-      "lines": 30083,
-      "stations": 934
+      "lines": 6194,
+      "stations": 197
     },
     {
       "id": "china-ningxia",
@@ -233,7 +350,7 @@
         107.6,
         39.4
       ],
-      "lines": 5785,
+      "lines": 5757,
       "stations": 195
     },
     {
@@ -246,8 +363,8 @@
         103,
         39.2
       ],
-      "lines": 6809,
-      "stations": 229
+      "lines": 6805,
+      "stations": 226
     },
     {
       "id": "china-xinjiang",
@@ -259,8 +376,8 @@
         96.4,
         49.2
       ],
-      "lines": 14817,
-      "stations": 561
+      "lines": 11085,
+      "stations": 390
     },
     {
       "id": "china-tibet",
@@ -272,8 +389,8 @@
         99.1,
         36.5
       ],
-      "lines": 3097,
-      "stations": 131
+      "lines": 1481,
+      "stations": 82
     },
     {
       "id": "china-sichuan",
@@ -285,8 +402,8 @@
         108.5,
         34.3
       ],
-      "lines": 45872,
-      "stations": 1864
+      "lines": 10474,
+      "stations": 662
     },
     {
       "id": "china-chongqing",
@@ -298,7 +415,7 @@
         110.2,
         32.2
       ],
-      "lines": 18252,
+      "lines": 18232,
       "stations": 624
     },
     {
@@ -311,8 +428,8 @@
         106.2,
         29.2
       ],
-      "lines": 20982,
-      "stations": 740
+      "lines": 11610,
+      "stations": 461
     },
     {
       "id": "china-guizhou",
@@ -324,8 +441,8 @@
         109.6,
         29.2
       ],
-      "lines": 19818,
-      "stations": 646
+      "lines": 17571,
+      "stations": 570
     },
     {
       "id": "china-guangxi",
@@ -337,8 +454,8 @@
         112.1,
         26.4
       ],
-      "lines": 20071,
-      "stations": 644
+      "lines": 8835,
+      "stations": 284
     },
     {
       "id": "china-hainan",
@@ -363,8 +480,8 @@
         117.3,
         25.5
       ],
-      "lines": 29649,
-      "stations": 1579
+      "lines": 24033,
+      "stations": 1447
     },
     {
       "id": "china-hunan",
@@ -376,8 +493,8 @@
         114.3,
         30.1
       ],
-      "lines": 25347,
-      "stations": 708
+      "lines": 20769,
+      "stations": 587
     },
     {
       "id": "china-hubei",
@@ -389,8 +506,8 @@
         116.1,
         33.3
       ],
-      "lines": 27525,
-      "stations": 845
+      "lines": 12123,
+      "stations": 496
     },
     {
       "id": "china-jiangxi",
@@ -402,8 +519,8 @@
         118.5,
         30.1
       ],
-      "lines": 22587,
-      "stations": 703
+      "lines": 11389,
+      "stations": 354
     },
     {
       "id": "china-anhui",
@@ -415,8 +532,8 @@
         119.7,
         34.7
       ],
-      "lines": 25734,
-      "stations": 1410
+      "lines": 6241,
+      "stations": 204
     },
     {
       "id": "china-jiangsu",
@@ -428,8 +545,8 @@
         121.9,
         35.1
       ],
-      "lines": 31847,
-      "stations": 2193
+      "lines": 23641,
+      "stations": 1697
     },
     {
       "id": "china-shanghai",
@@ -441,7 +558,7 @@
         122,
         31.9
       ],
-      "lines": 6659,
+      "lines": 6644,
       "stations": 429
     },
     {
@@ -454,8 +571,8 @@
         123,
         31.2
       ],
-      "lines": 21708,
-      "stations": 1175
+      "lines": 18620,
+      "stations": 1011
     },
     {
       "id": "china-fujian",
@@ -467,8 +584,8 @@
         120.5,
         28.3
       ],
-      "lines": 13758,
-      "stations": 521
+      "lines": 12401,
+      "stations": 480
     }
   ]
 }

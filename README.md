@@ -23,8 +23,10 @@
 │   ├── taiwan.topo.json
 │   ├── hongkong.topo.json
 │   ├── macau.topo.json
-│   ├── japan.topo.json
-│   └── china/                   # 省級 TopoJSON
+│   ├── japan/                   # 日本 6 區域 TopoJSON
+│   │   ├── hokkaido.topo.json
+│   │   └── ...
+│   └── china/                   # 中國 36 省級 TopoJSON
 │       ├── guangdong.topo.json
 │       └── ...
 └── scripts/

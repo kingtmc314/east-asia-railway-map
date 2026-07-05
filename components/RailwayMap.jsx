@@ -166,9 +166,13 @@ export default function RailwayMap() {
     const toLoad = manifest.regions.filter((r) => {
       if (loadedRegionsRef.current.has(r.id)) return false;
       if (!bboxIntersects(viewBbox, r.bbox)) return false;
-      // 大區域縮放時優先載入有 HSR 的區域；小區域載入全部可見
-      if (zoom <= 6 && r.id.startsWith('china-') && !['china-beijing', 'china-shanghai', 'china-guangdong', 'china-jiangsu', 'china-zhejiang'].includes(r.id)) {
-        return false;
+      // 大區域縮放時，中國僅預載東部 HSR 走廊省份
+      if (zoom <= 6 && r.id.startsWith('china-')) {
+        const hsrCorridor = new Set([
+          'china-beijing', 'china-shanghai', 'china-guangdong',
+          'china-jiangsu', 'china-zhejiang', 'china-hebei-north', 'china-hebei-south',
+        ]);
+        if (!hsrCorridor.has(r.id)) return false;
       }
       return true;
     });
@@ -381,13 +385,6 @@ export default function RailwayMap() {
 
         // 初始載入：台灣、香港、澳門 + 可見中國省份
         await loadVisibleRegions();
-
-        // 若 manifest 有 japan 且尚未載入，背景載入
-        const japan = manifestRef.current.regions.find((r) => r.id === 'japan');
-        if (japan && !loadedRegionsRef.current.has('japan')) {
-          loadRegion(japan);
-        }
-
         setLoading(false);
 
         map.on('moveend', () => loadVisibleRegions());
