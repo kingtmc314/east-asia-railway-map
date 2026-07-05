@@ -3,14 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import MapControlPanel from '@/components/MapControlPanel';
 import {
   TOPOLOGY_STYLE,
   SOURCE_LINES,
   SOURCE_STATIONS,
   TOPO_PAINT,
   LAYER_FILTERS,
+  GEOJSON_SOURCE_OPTS,
+  STATION_LABEL_LAYOUT_HUB,
   STATION_LABEL_LAYOUT_STANDARD,
   STATION_LABEL_LAYOUT_DENSE,
+  ALL_LINE_LAYER_IDS,
+  ALL_STATION_LAYER_IDS,
+  ALL_LABEL_LAYER_IDS,
+  TIER_LAYER_VISIBILITY,
 } from '@/lib/map-style';
 import {
   applyDataToMap,
@@ -23,56 +30,23 @@ import {
   mergeCollections,
 } from '@/lib/data-loader';
 
-/** 五大宏觀地區 — 點擊後 flyTo 並按需載入 */
 const MACRO_REGIONS = [
-  {
-    id: 'hongkong',
-    label: '香港',
-    short: 'HK',
-    center: [114.17, 22.32],
-    zoom: 11,
-    accent: 'from-red-500 to-rose-600',
-    ring: 'ring-red-400',
-  },
-  {
-    id: 'macau',
-    label: '澳門',
-    short: 'MO',
-    center: [113.57, 22.16],
-    zoom: 13.5,
-    accent: 'from-emerald-500 to-teal-600',
-    ring: 'ring-emerald-400',
-  },
-  {
-    id: 'taiwan',
-    label: '台灣',
-    short: 'TW',
-    center: [120.95, 23.6],
-    zoom: 7.5,
-    accent: 'from-blue-500 to-indigo-600',
-    ring: 'ring-blue-400',
-  },
-  {
-    id: 'china',
-    label: '中國',
-    short: 'CN',
-    center: [104.5, 35.5],
-    zoom: 4.2,
-    accent: 'from-amber-500 to-orange-600',
-    ring: 'ring-amber-400',
-  },
-  {
-    id: 'japan',
-    label: '日本',
-    short: 'JP',
-    center: [138.0, 36.2],
-    zoom: 5.2,
-    accent: 'from-fuchsia-500 to-pink-600',
-    ring: 'ring-fuchsia-400',
-  },
+  { id: 'hongkong', label: '香港', center: [114.17, 22.32], zoom: 11 },
+  { id: 'macau', label: '澳門', center: [113.57, 22.16], zoom: 13.5 },
+  { id: 'taiwan', label: '台灣', center: [120.95, 23.6], zoom: 7.5 },
+  { id: 'china', label: '中國大陸', center: [104.5, 35.5], zoom: 4.2 },
+  { id: 'japan', label: '日本', center: [138.0, 36.2], zoom: 5.2 },
 ];
 
-const LOAD_CONCURRENCY = 4;
+const TIER_LOAD_LABEL = {
+  hsr: '高鐵/新幹線',
+  intercity: '城際/普鐵',
+  metro: '都市地鐵/私鐵',
+};
+
+const LOAD_CONCURRENCY = 3;
+const REFRESH_DEBOUNCE_MS = 200;
+const MOVEEND_DEBOUNCE_MS = 350;
 
 function getSubRegions(macroId, manifest) {
   if (!manifest?.regions) return [];
@@ -92,17 +66,46 @@ function getSubRegions(macroId, manifest) {
   }
 }
 
-function setupRailwayLayers(map, { showLineSidebar, showStationSidebar, closeSidebar }) {
+function applyTierVisibility(map, tierId) {
+  const cfg = TIER_LAYER_VISIBILITY[tierId];
+  if (!cfg) return;
+
+  const visibleLines = new Set(cfg.lines);
+  const visibleStations = new Set(cfg.stations);
+  const visibleLabels = new Set(cfg.labels);
+
+  ALL_LINE_LAYER_IDS.forEach((id) => {
+    if (map.getLayer(id)) {
+      map.setLayoutProperty(id, 'visibility', visibleLines.has(id) ? 'visible' : 'none');
+    }
+  });
+  ALL_STATION_LAYER_IDS.forEach((id) => {
+    if (map.getLayer(id)) {
+      map.setLayoutProperty(id, 'visibility', visibleStations.has(id) ? 'visible' : 'none');
+    }
+  });
+  ALL_LABEL_LAYER_IDS.forEach((id) => {
+    if (map.getLayer(id)) {
+      map.setLayoutProperty(id, 'visibility', visibleLabels.has(id) ? 'visible' : 'none');
+    }
+  });
+  if (map.getLayer('line-highlight')) map.setLayoutProperty('line-highlight', 'visibility', 'visible');
+  if (map.getLayer('station-selected')) map.setLayoutProperty('station-selected', 'visibility', 'visible');
+}
+
+function setupRailwayLayers(map, tierId, { showLineSidebar, showStationSidebar, closeSidebar }) {
   if (map.getSource(SOURCE_LINES)) return;
 
   map.addSource(SOURCE_LINES, {
     type: 'geojson',
     data: { type: 'FeatureCollection', features: [] },
-    tolerance: 0.5,
+    ...GEOJSON_SOURCE_OPTS,
   });
   map.addSource(SOURCE_STATIONS, {
     type: 'geojson',
     data: { type: 'FeatureCollection', features: [] },
+    tolerance: GEOJSON_SOURCE_OPTS.tolerance,
+    buffer: GEOJSON_SOURCE_OPTS.buffer,
   });
 
   map.addLayer({
@@ -171,6 +174,7 @@ function setupRailwayLayers(map, { showLineSidebar, showStationSidebar, closeSid
     filter: ['==', ['get', 'osm_id'], -1],
     paint: TOPO_PAINT.highlight,
   });
+
   map.addLayer({
     id: 'stations-major',
     type: 'circle',
@@ -202,49 +206,60 @@ function setupRailwayLayers(map, { showLineSidebar, showStationSidebar, closeSid
     filter: ['==', ['get', 'osm_id'], -1],
     paint: TOPO_PAINT.stationSelected,
   });
+
+  // Z7–11.5：僅核心樞紐大站文字
+  map.addLayer({
+    id: 'station-labels-hub',
+    type: 'symbol',
+    source: SOURCE_STATIONS,
+    minzoom: 7,
+    maxzoom: 11.5,
+    filter: LAYER_FILTERS.stationsHubLabels,
+    layout: STATION_LABEL_LAYOUT_HUB,
+    paint: TOPO_PAINT.stationLabelsHub,
+  });
+  // Z12+：一般站名（可變錨點 + text-optional）
   map.addLayer({
     id: 'station-labels',
     type: 'symbol',
     source: SOURCE_STATIONS,
-    minzoom: 11,
-    maxzoom: 15.99,
+    minzoom: 12,
+    maxzoom: 14.99,
     filter: LAYER_FILTERS.hasLabel,
     layout: STATION_LABEL_LAYOUT_STANDARD,
     paint: TOPO_PAINT.stationLabels,
   });
+  // Z15+：密集區域
   map.addLayer({
     id: 'station-labels-dense',
     type: 'symbol',
     source: SOURCE_STATIONS,
-    minzoom: 16,
+    minzoom: 15,
     filter: LAYER_FILTERS.hasLabel,
     layout: STATION_LABEL_LAYOUT_DENSE,
     paint: TOPO_PAINT.stationLabelsDense,
   });
 
-  const lineLayers = [
-    'lines-hsr',
-    'lines-hsr-mid',
-    'lines-hsr-local',
-    'lines-intercity',
-    'lines-intercity-local',
-    'lines-metro',
-    'lines-tram',
-  ];
-  const stationLayers = ['stations-major', 'stations-all', 'stations-detail'];
-  const labelLayers = ['station-labels', 'station-labels-dense'];
+  applyTierVisibility(map, tierId);
 
-  lineLayers.forEach((id) => {
+  const interactiveLayers = [
+    ...ALL_LINE_LAYER_IDS,
+    ...ALL_STATION_LAYER_IDS,
+    ...ALL_LABEL_LAYER_IDS,
+  ];
+
+  interactiveLayers.forEach((id) => {
     map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+  });
+
+  ALL_LINE_LAYER_IDS.forEach((id) => {
     map.on('click', id, (e) => {
       if (e.features?.length) showLineSidebar(e.features[0].properties);
     });
   });
 
-  [...stationLayers, ...labelLayers].forEach((id) => {
-    map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+  [...ALL_STATION_LAYER_IDS, ...ALL_LABEL_LAYER_IDS].forEach((id) => {
     map.on('click', id, (e) => {
       if (!e.features?.length) return;
       const f = e.features[0];
@@ -253,9 +268,7 @@ function setupRailwayLayers(map, { showLineSidebar, showStationSidebar, closeSid
   });
 
   map.on('click', (e) => {
-    const hits = map.queryRenderedFeatures(e.point, {
-      layers: [...lineLayers, ...stationLayers, ...labelLayers],
-    });
+    const hits = map.queryRenderedFeatures(e.point, { layers: interactiveLayers });
     if (!hits.length) closeSidebar();
   });
 }
@@ -277,11 +290,16 @@ export default function RailwayMap() {
   const loadingRegionsRef = useRef(new Set());
   const layersReadyRef = useRef(false);
   const activeMacroRef = useRef(null);
+  const activeTierRef = useRef('hsr');
   const loadTokenRef = useRef(0);
+  const refreshTimerRef = useRef(null);
+  const moveEndTimerRef = useRef(null);
+  const pendingRefreshRef = useRef(false);
 
   const [sidebar, setSidebar] = useState(null);
   const [mapReady, setMapReady] = useState(false);
-  const [activeMacro, setActiveMacro] = useState(null);
+  const [activeMacro, setActiveMacro] = useState('');
+  const [activeTier, setActiveTier] = useState('hsr');
   const [regionLoading, setRegionLoading] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(4);
   const [loadedCount, setLoadedCount] = useState(0);
@@ -330,7 +348,7 @@ export default function RailwayMap() {
       map.flyTo({
         center: coordinates,
         zoom: Math.max(map.getZoom(), 13),
-        duration: 1200,
+        duration: 1000,
         essential: true,
       });
 
@@ -367,14 +385,60 @@ export default function RailwayMap() {
     if (!map?.getSource(SOURCE_LINES)) return;
     const enriched = enrichStations(allLinesRef.current, allStationsRef.current);
     applyDataToMap(map, allLinesRef.current, enriched, stationMetaRef);
+    pendingRefreshRef.current = false;
   }, []);
+
+  const scheduleRefresh = useCallback(
+    (immediate = false) => {
+      pendingRefreshRef.current = true;
+      clearTimeout(refreshTimerRef.current);
+      if (immediate) {
+        refreshMapData();
+        return;
+      }
+      refreshTimerRef.current = setTimeout(() => {
+        if (pendingRefreshRef.current) refreshMapData();
+      }, REFRESH_DEBOUNCE_MS);
+    },
+    [refreshMapData]
+  );
 
   const ensureLayers = useCallback(() => {
     const map = mapRef.current;
     if (!map || layersReadyRef.current) return;
-    setupRailwayLayers(map, { showLineSidebar, showStationSidebar, closeSidebar });
+    setupRailwayLayers(map, activeTierRef.current, {
+      showLineSidebar,
+      showStationSidebar,
+      closeSidebar,
+    });
     layersReadyRef.current = true;
   }, [closeSidebar, showLineSidebar, showStationSidebar]);
+
+  const applyTier = useCallback((tierId, { fly = true } = {}) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    activeTierRef.current = tierId;
+    setActiveTier(tierId);
+
+    if (layersReadyRef.current) {
+      applyTierVisibility(map, tierId);
+    }
+
+    if (!fly) return;
+
+    const cfg = TIER_LAYER_VISIBILITY[tierId];
+    const macro = MACRO_REGIONS.find((m) => m.id === activeMacroRef.current);
+    const center = macro ? macro.center : map.getCenter().toArray();
+    const targetZoom = cfg?.targetZoom ?? map.getZoom();
+
+    map.flyTo({
+      center,
+      zoom: macro ? Math.max(targetZoom, macro.zoom * 0.85) : targetZoom,
+      duration: 1200,
+      essential: true,
+    });
+  }, []);
 
   const loadRegionFile = useCallback(
     async (region) => {
@@ -402,7 +466,7 @@ export default function RailwayMap() {
 
         loadedRegionsRef.current.add(region.id);
         setLoadedCount(loadedRegionsRef.current.size);
-        refreshMapData();
+        scheduleRefresh();
         return true;
       } catch (err) {
         console.warn(`無法載入 ${region.id}:`, err.message);
@@ -411,11 +475,11 @@ export default function RailwayMap() {
         loadingRegionsRef.current.delete(region.id);
       }
     },
-    [ensureLayers, refreshMapData]
+    [ensureLayers, scheduleRefresh]
   );
 
   const loadMacroRegionData = useCallback(
-    async (macroId, { visibleOnly = false } = {}) => {
+    async (macroId, { visibleOnly = false, tierId = activeTierRef.current } = {}) => {
       const map = mapRef.current;
       if (!map) return;
 
@@ -445,10 +509,11 @@ export default function RailwayMap() {
       const token = ++loadTokenRef.current;
       let done = 0;
       const total = pending.length;
+      const tierLabel = TIER_LOAD_LABEL[tierId] || '鐵路';
 
       setRegionLoading({
         label: macro.label,
-        message: `正在載入${macro.label}鐵路資料...`,
+        message: `正在載入${macro.label}${tierLabel}…`,
         done: 0,
         total,
       });
@@ -466,8 +531,8 @@ export default function RailwayMap() {
               label: macro.label,
               message:
                 total > 1
-                  ? `正在載入${macro.label}鐵路資料 (${done}/${total})...`
-                  : `正在載入${macro.label}鐵路資料...`,
+                  ? `正在載入${macro.label}${tierLabel} (${done}/${total})…`
+                  : `正在載入${macro.label}${tierLabel}…`,
               done,
               total,
             });
@@ -476,12 +541,13 @@ export default function RailwayMap() {
       });
 
       await Promise.all(workers);
+      scheduleRefresh(true);
 
       if (loadTokenRef.current === token) {
         setRegionLoading(null);
       }
     },
-    [loadRegionFile]
+    [loadRegionFile, scheduleRefresh]
   );
 
   const selectMacroRegion = useCallback(
@@ -494,22 +560,33 @@ export default function RailwayMap() {
       activeMacroRef.current = macroId;
       closeSidebar();
 
+      const tierCfg = TIER_LAYER_VISIBILITY[activeTierRef.current];
       map.flyTo({
         center: macro.center,
-        zoom: macro.zoom,
+        zoom: Math.max(tierCfg?.targetZoom ?? macro.zoom, macro.zoom),
         duration: 1400,
         essential: true,
       });
 
-      loadMacroRegionData(macroId);
+      loadMacroRegionData(macroId, { tierId: activeTierRef.current });
     },
     [closeSidebar, loadMacroRegionData]
+  );
+
+  const handleTierChange = useCallback(
+    (tierId) => {
+      applyTier(tierId, { fly: true });
+      if (activeMacroRef.current) {
+        loadMacroRegionData(activeMacroRef.current, { tierId });
+      }
+    },
+    [applyTier, loadMacroRegionData]
   );
 
   const loadVisibleForActiveMacro = useCallback(() => {
     const macroId = activeMacroRef.current;
     if (!macroId || !['china', 'japan'].includes(macroId)) return;
-    loadMacroRegionData(macroId, { visibleOnly: true });
+    loadMacroRegionData(macroId, { visibleOnly: true, tierId: activeTierRef.current });
   }, [loadMacroRegionData]);
 
   useEffect(() => {
@@ -522,28 +599,41 @@ export default function RailwayMap() {
       zoom: 4,
       minZoom: 3,
       maxZoom: 18,
+      fadeDuration: 0,
       attributionControl: true,
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-right');
 
-    map.on('zoom', () => setZoomLevel(Math.round(map.getZoom() * 10) / 10));
+    let zoomRaf = null;
+    map.on('zoom', () => {
+      if (zoomRaf) return;
+      zoomRaf = requestAnimationFrame(() => {
+        setZoomLevel(Math.round(map.getZoom() * 10) / 10);
+        zoomRaf = null;
+      });
+    });
+
     mapRef.current = map;
 
     map.on('load', () => {
       setMapReady(true);
       fetchManifest()
         .then((m) => { manifestRef.current = m; })
-        .catch((err) => console.warn('manifest 預載失敗（將於選擇地區時重試）:', err.message));
+        .catch((err) => console.warn('manifest 預載失敗:', err.message));
     });
 
     map.on('moveend', () => {
-      loadVisibleForActiveMacro();
+      clearTimeout(moveEndTimerRef.current);
+      moveEndTimerRef.current = setTimeout(loadVisibleForActiveMacro, MOVEEND_DEBOUNCE_MS);
     });
 
     return () => {
       loadTokenRef.current += 1;
+      clearTimeout(refreshTimerRef.current);
+      clearTimeout(moveEndTimerRef.current);
+      if (zoomRaf) cancelAnimationFrame(zoomRaf);
       map.remove();
       mapRef.current = null;
       layersReadyRef.current = false;
@@ -551,15 +641,15 @@ export default function RailwayMap() {
   }, [loadVisibleForActiveMacro]);
 
   const zoomHint =
-    zoomLevel < 7
-      ? '大區域：高鐵/新幹線幹線'
-      : zoomLevel < 11
-        ? '中區域：城際鐵路 + 轉乘站'
-        : zoomLevel < 13
-          ? '小區域：地鐵/私鐵/輕軌'
-          : zoomLevel < 16
-            ? '詳細：全部車站標籤（可變錨點）'
-            : '最大：100% 顯示所有站名';
+    activeTier === 'hsr'
+      ? '高鐵/新幹線幹線 · 樞紐站名'
+      : activeTier === 'intercity'
+        ? '城際普鐵 + 轉乘站'
+        : zoomLevel < 12
+          ? '地鐵/私鐵路線 · 站名 Z12+ 顯示'
+          : zoomLevel < 15
+            ? '全部車站標籤（可變錨點）'
+            : '密集區域全站名';
 
   const tierLabel = (tier) => {
     if (tier === 'hsr') return '高速鐵路';
@@ -572,99 +662,21 @@ export default function RailwayMap() {
     <div className="relative h-full w-full bg-[#F5F3EF]">
       <div ref={mapContainer} className="h-full w-full" />
 
-      {/* 頂部標題 + 地區導覽 Tabs */}
-      <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="pointer-events-auto rounded-xl border border-neutral-200/80 bg-white/95 px-4 py-3 shadow-sm backdrop-blur-sm">
-            <h1 className="text-base font-bold tracking-tight text-neutral-900">
-              東亞鐵路拓撲圖
-            </h1>
-            <p className="text-[11px] text-neutral-500">
-              選擇地區以載入鐵路資料 · 按需載入
-            </p>
-          </div>
-
-          <div className="pointer-events-auto rounded-xl border border-neutral-200/80 bg-white/95 px-3 py-2 text-right shadow-sm backdrop-blur-sm">
-            <div className="text-[11px] font-semibold text-neutral-700">Zoom {zoomLevel}</div>
-            <div className="text-[10px] text-neutral-400">{zoomHint}</div>
-            {loadedCount > 0 && (
-              <div className="text-[10px] text-neutral-400">{loadedCount} 區域已快取</div>
-            )}
-          </div>
-        </div>
-
-        <nav
-          className="pointer-events-auto mx-auto flex flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-neutral-200/80 bg-white/95 p-1.5 shadow-md backdrop-blur-sm"
-          aria-label="地區快速切換"
-        >
-          {MACRO_REGIONS.map((macro) => {
-            const isActive = activeMacro === macro.id;
-            return (
-              <button
-                key={macro.id}
-                type="button"
-                onClick={() => selectMacroRegion(macro.id)}
-                disabled={!mapReady}
-                className={[
-                  'group relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200',
-                  isActive
-                    ? `bg-gradient-to-r ${macro.accent} text-white shadow-md ring-2 ${macro.ring} ring-offset-1`
-                    : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900',
-                  !mapReady ? 'cursor-wait opacity-60' : 'cursor-pointer',
-                ].join(' ')}
-              >
-                <span
-                  className={[
-                    'flex h-6 w-6 items-center justify-center rounded-md text-[10px] font-bold',
-                    isActive ? 'bg-white/25 text-white' : 'bg-neutral-100 text-neutral-500 group-hover:bg-neutral-200',
-                  ].join(' ')}
-                >
-                  {macro.short}
-                </span>
-                {macro.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* 局部 Loading — 右下角，不遮擋地圖 */}
-      {regionLoading && (
-        <div className="pointer-events-none absolute bottom-6 right-4 z-20">
-          <div className="flex items-center gap-3 rounded-full border border-neutral-200/80 bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur-sm">
-            <svg
-              className="h-4 w-4 animate-spin text-neutral-600"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
-            <span className="text-sm font-medium text-neutral-700">{regionLoading.message}</span>
-            {regionLoading.total > 1 && (
-              <span className="text-xs text-neutral-400">
-                {regionLoading.done}/{regionLoading.total}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
+      <MapControlPanel
+        mapReady={mapReady}
+        activeTier={activeTier}
+        onTierChange={handleTierChange}
+        regions={MACRO_REGIONS}
+        activeRegion={activeMacro}
+        onRegionSelect={selectMacroRegion}
+        regionLoading={regionLoading}
+        zoomLevel={zoomLevel}
+        zoomHint={zoomHint}
+        loadedCount={loadedCount}
+      />
 
       {sidebar && (
-        <aside className="absolute bottom-0 left-0 top-0 z-20 flex w-80 flex-col border-r border-neutral-200 bg-white shadow-xl">
+        <aside className="absolute bottom-0 left-0 top-0 z-20 flex w-80 flex-col border-r border-neutral-200/80 bg-white/95 shadow-xl backdrop-blur-md">
           <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
             <span className="text-sm font-semibold text-neutral-800">
               {sidebar.type === 'line' ? '路線' : '車站'}
