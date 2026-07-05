@@ -1,8 +1,8 @@
 #!/bin/bash
-# Deploy: GitHub (elitelearning-PRO) + Vercel
+# Deploy: GitHub (kingtmc314) + Vercel
 set -euo pipefail
 
-GITHUB_USER="elitelearning-PRO"
+GITHUB_USER="kingtmc314"
 REPO="east-asia-railway-map"
 REMOTE="https://github.com/${GITHUB_USER}/${REPO}.git"
 
@@ -13,4 +13,4 @@ git push -u origin main
 npx vercel git connect "$REMOTE" --yes || true
 npx vercel deploy --prod --yes
 
-echo "Done: https://east-asia-railway-map-phi.vercel.app"
+echo "Done: https://github.com/${GITHUB_USER}/${REPO}"
