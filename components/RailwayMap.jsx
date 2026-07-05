@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-const STADIA_STYLE = 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json';
+const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 const REGIONS = [
   { id: 'hongkong', label: '香港', center: [114.1694, 22.3193], zoom: 12 },
@@ -26,7 +26,7 @@ export default function RailwayMap() {
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: STADIA_STYLE,
+      style: MAP_STYLE,
       center: [121.5, 24.5],
       zoom: 5,
       minZoom: 3,
@@ -74,7 +74,7 @@ export default function RailwayMap() {
                 東亞鐵路地圖
               </h1>
               <p className="text-[10px] text-neutral-400 sm:text-[11px]">
-                Stadia 向量底圖 · 即時渲染 · 無需預載資料
+                CARTO 向量底圖 · 即時渲染 · 無需預載資料
               </p>
             </div>
             <div className="text-right text-[10px] text-neutral-400">
