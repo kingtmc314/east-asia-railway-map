@@ -9,6 +9,8 @@ import {
   SOURCE_STATIONS,
   TOPO_PAINT,
   LAYER_FILTERS,
+  STATION_LABEL_LAYOUT_STANDARD,
+  STATION_LABEL_LAYOUT_DENSE,
 } from '@/lib/map-style';
 import {
   applyDataToMap,
@@ -210,6 +212,7 @@ export default function RailwayMap() {
       'stations-all',
       'stations-detail',
     ];
+    const labelLayers = ['station-labels', 'station-labels-dense'];
 
     map.on('load', async () => {
       try {
@@ -334,23 +337,27 @@ export default function RailwayMap() {
           paint: TOPO_PAINT.stationSelected,
         });
 
-        // ── 車站文字標籤 Z12+ ──
+        // ── 車站文字標籤 Z11+（可變錨點，繁中優先） ──
         map.addLayer({
           id: 'station-labels',
           type: 'symbol',
           source: SOURCE_STATIONS,
-          minzoom: 12,
-          layout: {
-            'text-field': ['coalesce', ['get', 'label_zh'], ['get', 'name']],
-            'text-size': ['interpolate', ['linear'], ['zoom'], 12, 10, 14, 12, 16, 14, 18, 16],
-            'text-offset': [0, 1.4],
-            'text-anchor': 'top',
-            'text-font': ['Open Sans Regular'],
-            'text-max-width': 10,
-            'text-allow-overlap': false,
-            'text-optional': true,
-          },
+          minzoom: 11,
+          maxzoom: 15.99,
+          filter: LAYER_FILTERS.hasLabel,
+          layout: STATION_LABEL_LAYOUT_STANDARD,
           paint: TOPO_PAINT.stationLabels,
+        });
+
+        // ── Z16+ 密集區域：強制顯示所有站名（地鐵/私鐵） ──
+        map.addLayer({
+          id: 'station-labels-dense',
+          type: 'symbol',
+          source: SOURCE_STATIONS,
+          minzoom: 16,
+          filter: LAYER_FILTERS.hasLabel,
+          layout: STATION_LABEL_LAYOUT_DENSE,
+          paint: TOPO_PAINT.stationLabelsDense,
         });
 
         [...lineLayers, 'lines-hsr-mid', 'lines-hsr-local', 'lines-intercity-local'].forEach((id) => {
@@ -361,7 +368,7 @@ export default function RailwayMap() {
           });
         });
 
-        [...stationLayers].forEach((id) => {
+        [...stationLayers, ...labelLayers].forEach((id) => {
           map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
           map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
           map.on('click', id, (e) => {
@@ -373,7 +380,14 @@ export default function RailwayMap() {
 
         map.on('click', (e) => {
           const hits = map.queryRenderedFeatures(e.point, {
-            layers: [...lineLayers, 'lines-hsr-mid', 'lines-hsr-local', 'lines-intercity-local', ...stationLayers, 'station-labels'],
+            layers: [
+              ...lineLayers,
+              'lines-hsr-mid',
+              'lines-hsr-local',
+              'lines-intercity-local',
+              ...stationLayers,
+              ...labelLayers,
+            ],
           });
           if (!hits.length) closeSidebar();
         });
@@ -407,7 +421,9 @@ export default function RailwayMap() {
         ? '中區域：城際鐵路 + 轉乘站'
         : zoomLevel < 13
           ? '小區域：地鐵/私鐵/輕軌'
-          : '詳細：車站標籤 + 地鐵圖風格';
+          : zoomLevel < 16
+          ? '詳細：全部車站標籤（可變錨點）'
+          : '最大：100% 顯示所有站名';
 
   const tierLabel = (tier) => {
     if (tier === 'hsr') return '高速鐵路';

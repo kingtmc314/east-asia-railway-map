@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "fetch-data": "node scripts/fetch-railway-data.mjs",
+    "fetch-railways": "node scripts/fetch-railway-data.mjs",
     "build-data": "node scripts/build-data.mjs",
     "build-data:raw": "node scripts/build-data.mjs --from-raw"
   },
