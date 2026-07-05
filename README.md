@@ -1,104 +1,165 @@
-# 東亞鐵路拓撲圖
+# 東亞動態鐵路網絡與 GIS 矩陣控制系統
 
-大阪官方路網圖風格的東亞鐵路互動地圖，涵蓋 **台灣、香港、澳門、中國大陸、日本**。資料來源 OpenStreetMap，前端 Next.js + MapLibre GL JS。
+**East Asia Railway Map & Interactive GIS Matrix**
 
-## 功能特色
+A professional, bilingual Web GIS platform for exploring railway networks across **Hong Kong, Macau, Taiwan, Mainland China, and Japan**. Built with Next.js 15, MapLibre GL JS, and Tailwind CSS — inspired by the fluid UX of [RailsMaps](https://railsmaps.com).
 
-- **官方路線色**：OSM `color` / `operator` / `network` + 對照表補全
-- **三級縮放**：Z4–6 高鐵 → Z7–10 城際 → Z11+ 地鐵/私鐵/輕軌
-- **完整站名**：Z11+ 可變錨點標籤，Z16+ 強制顯示所有站名（含私鐵/地鐵）
-- **TopoJSON + 省級拆分**：視窗動態載入，Vercel 友善
+[![Live Demo](https://img.shields.io/badge/demo-vercel.app-0070f3?style=flat-square)](https://east-asia-railway-map.vercel.app)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-## 專案結構
+---
+
+## Features
+
+### 1. RailsMaps-grade aesthetic architecture
+
+- **Carto Dark Matter** basemap — no API key, GPU-accelerated vector tiles
+- **Official line colours** from OpenStreetMap (`line_color`, operator, network)
+- Station labels anchored to track geometry — no drift, no missing hubs
+- Dark GIS canvas with frosted-glass sidebar control panel
+
+### 2. Bilingual rendering engine
+
+- **One-click 繁中 / EN toggle** — instant label switch via `map.setLayoutProperty`
+- **Zero reload** — MapLibre expressions swap `text-field` in milliseconds
+- Full UI localisation: sidebar, legend, type descriptions, status bar
+
+| Mode | MapLibre `text-field` expression |
+|------|----------------------------------|
+| 繁中 | `coalesce(name:zh-Hant, name:zh-HK, name:zh-TW, name:zh, label_zh, name)` |
+| EN | `coalesce(name:en, name)` |
+
+### 3. Dual-matrix control panel
+
+Cross-filter **5 macro-regions × 4 railway types** with instant GPU filters:
+
+| Regions | Types |
+|---------|-------|
+| 香港 Hong Kong | 高鐵 / 新幹線 High-speed |
+| 澳門 Macau | 普通鐵路 / 國鐵 Conventional rail |
+| 台灣 Taiwan | 地鐵 / 捷運 Metro |
+| 中國大陸 China | 輕軌 / 路面電車 Light rail |
+| 日本 Japan | |
+
+- **Select all / Clear all** for both matrices
+- **Live legend** updates with active type selection
+- Region & type changes use `map.setFilter()` only — no data re-fetch
+
+### 4. Hardware-accelerated zoom thinning
+
+Industry-grade performance for tens of thousands of features:
+
+| Type | `minzoom` | Rationale |
+|------|-----------|-----------|
+| High-speed / Shinkansen | **3** | Global backbone visible at continent scale |
+| Conventional rail | **7** | Intercity lines appear at regional zoom |
+| Metro / Subway | **10** | Urban networks + station labels at city scale |
+| Light rail / Tram | **12.5** | Neighbourhood detail only when zoomed in (Tuen Mun, Macau LRT) |
+
+At low zoom, MapLibre **never evaluates** tram/metro layers — eliminating label collision lag. At Z12.5+, full bilingual labels render with overlap enabled for dense LRT stops.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 15 (App Router) |
+| Map engine | MapLibre GL JS 4.x |
+| Styling | Tailwind CSS 3 |
+| Data format | TopoJSON (OSM-derived) |
+| Basemap | CARTO Dark Matter GL |
+
+---
+
+## Project structure
 
 ```
-├── components/RailwayMap.jsx     # MapLibre 地圖核心
-├── lib/map-style.js            # 底圖、Paint、站名 Label 設定
-├── public/data/                # 靜態鐵路資料（部署時必須存在）
-│   ├── manifest.json           # 區域索引
-│   ├── taiwan.topo.json
+├── components/
+│   └── RailwayMap.jsx       # GIS matrix UI + MapLibre layers
+├── public/data/
+│   ├── manifest.json        # Region index (China provinces, Japan blocks)
 │   ├── hongkong.topo.json
 │   ├── macau.topo.json
-│   ├── japan/*.topo.json
-│   └── china/*.topo.json
-└── scripts/
-    ├── fetch-railway-data.mjs  # Overpass 抓取
-    └── build-data.mjs          # TopoJSON 建置
+│   ├── taiwan.topo.json
+│   ├── china/*.topo.json    # 36 provincial files
+│   └── japan/*.topo.json    # 6 regional files
+├── app/
+│   ├── layout.jsx
+│   └── page.jsx
+└── README.md
 ```
 
-## 本機開發
+---
+
+## Local development
 
 ```bash
-# 1. 安裝依賴
 npm install
-
-# 2. 抓取最新 OSM 資料（約 20–60 分鐘）
-npm run fetch-data
-# 別名：npm run fetch-railways
-
-# 3. 或從現有 GeoJSON 建置 TopoJSON
-npm run build-data
-
-# 4. 啟動開發伺服器
 npm run dev
 # → http://localhost:3000
 ```
 
-### 資料路徑說明
+Data files ship with the repo. No fetch scripts required for local preview.
 
-- 原始 GeoJSON 輸出至 `public/data/raw/`（不進版控）
-- 建置後 TopoJSON 位於 `public/data/` 及子目錄
-- 前端一律使用**絕對根路徑** fetch，例如：
-  - `/data/manifest.json`
-  - `/data/taiwan.topo.json`
-  - `/data/china/guangdong.topo.json`
+---
 
-## 部署到 Vercel（一鍵）
-
-### 前置：推送至 GitHub
+## Deploy to Vercel
 
 ```bash
-git init
-git add .
-git commit -m "East Asia Railway Map"
-git remote add origin https://github.com/kingtmc314/east-asia-railway-map.git
-git push -u origin main
+git push origin main
+npx vercel deploy --prod --yes
 ```
 
-> **重要**：請將 `public/data/**/*.topo.json` 與 `manifest.json` 一併 commit。  
-> 原始 `.json` 大檔已在 `.gitignore` 排除；`.vercelignore` 排除超過 100MB 的 raw GeoJSON。
+**Production:** [east-asia-railway-map.vercel.app](https://east-asia-railway-map.vercel.app)
 
-### Vercel 連動步驟
+> China + Japan TopoJSON totals ~300 MB. Initial deploy may take several minutes. Data is served as static assets from `/public/data/`.
 
-1. 登入 [vercel.com](https://vercel.com)
-2. 點 **Add New → Project**
-3. 選 **Import Git Repository**，連動你的 GitHub 帳號
-4. 選擇 `east-asia-railway-map` repository
-5. **Framework Preset** 選 **Next.js**（自動偵測）
-6. 建置設定使用預設值即可：
-   - Build Command: `npm run build`
-   - Output Directory: `.next`（Next.js 預設）
-   - Install Command: `npm install`
-7. 點 **Deploy**
+---
 
-部署完成後，Vercel 會提供 `https://your-project.vercel.app` 網址。
+## Architecture notes
 
-### CLI 快速部署（選用）
+### Instant filter pipeline
 
-```bash
-npx vercel --prod
+```
+User toggles region/type
+        ↓
+map.setFilter(layerId, ['all', typeFilter, regionFilter])
+        ↓
+GPU culls features — 0 ms network, 0 ms parse
 ```
 
-## 站名 Label 設定
+### Bilingual pipeline
 
-站名圖層設定於 `lib/map-style.js`：
+```
+User toggles 繁中 / EN
+        ↓
+map.setLayoutProperty('labels-*', 'text-field', TEXT_ZH | TEXT_EN)
+        ↓
+MapLibre re-evaluates expressions — no source reload
+```
 
-- **繁中優先**：`name:zh-Hant` → `name:zh-HK` → `name:zh-TW` → `name:zh` → `name:ja` → `name`
-- **CJK 字型**：`Noto Sans CJK JP Regular` + `Open Sans Regular` 備用
-- **Z11–15**：`text-variable-anchor` 自動找空位
-- **Z16+**：`text-allow-overlap: true` 確保密集地鐵/私鐵站名 100% 顯示
+### Data classification
 
-## 授權
+Each line feature is tagged at load time:
 
-- 程式碼：MIT
-- 地圖資料：© [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL)
+```javascript
+rail_type: 'hsr' | 'rail' | 'subway' | 'tram'
+macro_region: 'hongkong' | 'macau' | 'taiwan' | 'china' | 'japan'
+```
+
+Stations inherit `rail_type` from nearest connected line segment.
+
+---
+
+## Data source & licence
+
+- **Map data:** © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL)
+- **Basemap:** © [CARTO](https://carto.com/attributions) · © OpenStreetMap
+- **Code:** MIT License
+
+---
+
+## Acknowledgements
+
+UX patterns inspired by [RailsMaps](https://railsmaps.com) — the gold standard for interactive railway cartography on the web.
