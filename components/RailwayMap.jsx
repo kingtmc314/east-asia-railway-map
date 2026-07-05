@@ -7,6 +7,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 const STYLE_CARTO = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const STYLE_FALLBACK = 'https://tiles.openfreemap.org/styles/liberty';
 const LABEL_FONTS = ['Noto Sans CJK JP Regular', 'Open Sans Regular'];
+const LINE_LABEL_FONTS = ['Noto Sans CJK JP Regular', 'Noto Sans Regular', 'Arial Unicode MS Regular'];
 
 const LINES_SOURCE = 'railway-lines';
 const STATIONS_SOURCE = 'railway-stations';
@@ -29,21 +30,30 @@ const TEXT_EN = [
   ['get', 'name'],
 ];
 
+const TEXT_ZH_LINE = [
+  'coalesce',
+  ['get', 'line_name'],
+  ['get', 'name:zh-Hant'],
+  ['get', 'name:zh-HK'],
+  ['get', 'name:zh-TW'],
+  ['get', 'name:zh'],
+  ['get', 'name'],
+];
+
+const TEXT_EN_LINE = [
+  'coalesce',
+  ['get', 'name_en'],
+  ['get', 'name:en'],
+  ['get', 'line_name'],
+  ['get', 'name'],
+];
+
 const TYPE_PROP = ['coalesce', ['get', 'railway_type'], ['get', 'rail_type'], 'rail'];
 
-const LINE_COLOR = [
-  'coalesce',
-  ['get', 'color'],
-  ['get', 'line_color'],
-  ['get', 'colour'],
-  [
-    'match', TYPE_PROP,
-    'highspeed', '#E60012',
-    'subway', '#009E60',
-    'tram', '#FFD700',
-  '#005A9C',
-  ],
-];
+const LINE_COLOR = ['coalesce', ['get', 'color'], '#ffffff'];
+
+const MAX_FETCH_BYTES = 5 * 1024 * 1024;
+const MAX_FEATURES_PER_SHARD = 80000;
 
 const RAIL_TYPES = [
   {
@@ -91,6 +101,7 @@ const REGIONS = [
 const ALL_REGION_IDS = REGIONS.map((r) => r.id);
 const ALL_TYPE_IDS = RAIL_TYPES.map((t) => t.id);
 const LABEL_LAYER_IDS = RAIL_TYPES.map((t) => `labels-${t.id}`);
+const LINE_LABEL_LAYER_IDS = RAIL_TYPES.map((t) => `line-labels-${t.id}`);
 
 const I18N = {
   zh: {
@@ -216,10 +227,31 @@ function mergeFeatures(existing, incoming) {
 async function fetchCleanJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const len = Number(res.headers.get('content-length') || 0);
+  if (len > MAX_FETCH_BYTES) throw new Error(`file too large (${(len / 1024 / 1024).toFixed(1)} MB)`);
+  const text = await res.text();
+  if (!text || text.length < 10) throw new Error('empty response');
+  if (text.length > MAX_FETCH_BYTES) throw new Error(`payload too large (${(text.length / 1024 / 1024).toFixed(1)} MB)`);
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error('invalid JSON');
+  }
+  const lineCount = raw.lines?.length ?? 0;
+  const stationCount = raw.stations?.length ?? 0;
+  const featureCount = raw.features?.length ?? 0;
+  const total = lineCount + stationCount || featureCount;
+  if (total > MAX_FEATURES_PER_SHARD) {
+    throw new Error(`too many features (${total})`);
+  }
+  if (total === 0 && !raw.stats?.lines) {
+    throw new Error('empty dataset');
+  }
+  return raw;
 }
 
-const yieldMain = () => new Promise((r) => { setTimeout(r, 0); });
+const yieldMain = () => new Promise((r) => { setTimeout(r, 16); });
 
 function buildRegionFilter(selected) {
   if (!selected.length) return ['==', ['get', 'macro_region'], '__none__'];
@@ -228,6 +260,18 @@ function buildRegionFilter(selected) {
 
 function buildLayerFilter(typeFilter, regions) {
   return ['all', typeFilter, buildRegionFilter(regions)];
+}
+
+function lineLabelLayout(textField) {
+  return {
+    'symbol-placement': 'line',
+    'text-field': textField,
+    'text-font': LINE_LABEL_FONTS,
+    'text-size': 11,
+    'text-max-angle': 30,
+    'symbol-spacing': 350,
+    'text-keep-upright': true,
+  };
 }
 
 function labelLayout(stationMinzoom) {
@@ -246,7 +290,7 @@ function labelLayout(stationMinzoom) {
   };
 }
 
-function addRailLayers(map, textField) {
+function addRailLayers(map, textField, lineTextField) {
   for (const rt of RAIL_TYPES) {
     const lineId = `lines-${rt.id}`;
     if (!map.getLayer(lineId)) {
@@ -262,6 +306,23 @@ function addRailLayers(map, textField) {
           'line-cap': 'round',
           'line-join': 'round',
           'line-width': rt.lineWidth,
+        },
+      });
+    }
+
+    const lineLabelId = `line-labels-${rt.id}`;
+    if (!map.getLayer(lineLabelId)) {
+      map.addLayer({
+        id: lineLabelId,
+        type: 'symbol',
+        source: LINES_SOURCE,
+        minzoom: rt.lineMinzoom,
+        filter: rt.filter,
+        layout: lineLabelLayout(lineTextField),
+        paint: {
+          'text-color': LINE_COLOR,
+          'text-halo-color': '#000000',
+          'text-halo-width': 2,
         },
       });
     }
@@ -302,14 +363,14 @@ function addRailLayers(map, textField) {
   }
 }
 
-function initRailwayStack(map, textField) {
+function initRailwayStack(map, textField, lineTextField) {
   if (!map.getSource(LINES_SOURCE)) {
     map.addSource(LINES_SOURCE, { type: 'geojson', data: EMPTY_FC, tolerance: 0.5, buffer: 64 });
   }
   if (!map.getSource(STATIONS_SOURCE)) {
     map.addSource(STATIONS_SOURCE, { type: 'geojson', data: EMPTY_FC, tolerance: 0, buffer: 0 });
   }
-  addRailLayers(map, textField);
+  addRailLayers(map, textField, lineTextField);
 }
 
 function TogglePill({ active, onClick, children }) {
@@ -381,8 +442,12 @@ export default function RailwayMap() {
   const applyLocale = useCallback((map, loc) => {
     if (!mapIsReadyRef.current || !layersReadyRef.current) return;
     const field = loc === 'en' ? TEXT_EN : TEXT_ZH;
+    const lineField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
     for (const id of LABEL_LAYER_IDS) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', field);
+    }
+    for (const id of LINE_LABEL_LAYER_IDS) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', lineField);
     }
   }, []);
 
@@ -390,12 +455,10 @@ export default function RailwayMap() {
     if (!mapIsReadyRef.current || !layersReadyRef.current) return;
     for (const rt of RAIL_TYPES) {
       const active = types.includes(rt.id);
-      for (const id of [`lines-${rt.id}`, `dots-${rt.id}`, `labels-${rt.id}`]) {
+      const layerFilter = active ? buildLayerFilter(rt.filter, regions) : ['==', ['get', 'macro_region'], '__none__'];
+      for (const id of [`lines-${rt.id}`, `line-labels-${rt.id}`, `dots-${rt.id}`, `labels-${rt.id}`]) {
         if (!map.getLayer(id)) continue;
-        map.setFilter(
-          id,
-          active ? buildLayerFilter(rt.filter, regions) : ['==', ['get', 'macro_region'], '__none__']
-        );
+        map.setFilter(id, layerFilter);
       }
     }
   }, []);
@@ -404,14 +467,20 @@ export default function RailwayMap() {
     if (!canUseMap()) return;
     const map = mapRef.current;
     const { lines, stations } = dataRef.current;
+    if (lines.length > MAX_FEATURES_PER_SHARD || stations.length > MAX_FEATURES_PER_SHARD) {
+      console.warn('dataset too large for smooth rendering — trim region selection');
+      return;
+    }
     map.getSource(LINES_SOURCE).setData({ type: 'FeatureCollection', features: lines });
     map.getSource(STATIONS_SOURCE).setData({ type: 'FeatureCollection', features: stations });
     applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
   }, [canUseMap, applyMatrix]);
 
   const setupLayersAfterStyleLoad = useCallback((map) => {
-    const textField = matrixRef.current.locale === 'en' ? TEXT_EN : TEXT_ZH;
-    initRailwayStack(map, textField);
+    const loc = matrixRef.current.locale;
+    const textField = loc === 'en' ? TEXT_EN : TEXT_ZH;
+    const lineTextField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
+    initRailwayStack(map, textField, lineTextField);
     layersReadyRef.current = true;
     applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
     if (dataRef.current.lines.length) pushDataToMap();
@@ -421,11 +490,16 @@ export default function RailwayMap() {
     const region = REGIONS.find((r) => r.id === regionId);
     if (!region) return;
 
-    const manifest = manifestRef.current
-      || await fetchCleanJson('/data/clean-manifest.json').then((m) => {
-        manifestRef.current = m;
-        return m;
-      }).catch(() => null);
+    let manifest = manifestRef.current;
+    if (!manifest && region.cleanMacro) {
+      try {
+        manifest = await fetchCleanJson('/data/clean-manifest.json');
+        manifestRef.current = manifest;
+      } catch (err) {
+        console.warn('manifest unavailable:', err.message);
+        manifest = null;
+      }
+    }
 
     const jobs = [];
     if (region.cleanFile) {
@@ -464,11 +538,16 @@ export default function RailwayMap() {
     let totalShards = 0;
     let doneShards = 0;
 
-    const manifest = manifestRef.current
-      || await fetchCleanJson('/data/clean-manifest.json').then((m) => {
-        manifestRef.current = m;
-        return m;
-      }).catch(() => null);
+    let manifest = manifestRef.current;
+    if (!manifest && region.cleanMacro) {
+      try {
+        manifest = await fetchCleanJson('/data/clean-manifest.json');
+        manifestRef.current = manifest;
+      } catch (err) {
+        console.warn('manifest unavailable:', err.message);
+        manifest = null;
+      }
+    }
 
     for (const id of regionIds) {
       const r = REGIONS.find((x) => x.id === id);
@@ -515,7 +594,6 @@ export default function RailwayMap() {
       mapIsReadyRef.current = true;
       setMapIsReady(true);
       setupLayersAfterStyleLoad(map);
-      fetchCleanJson('/data/clean-manifest.json').then((m) => { manifestRef.current = m; }).catch(() => {});
     };
 
     map.on('load', onMapReady);

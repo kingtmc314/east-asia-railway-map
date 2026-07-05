@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * East Asia Railway — dual-track Overpass pipeline (RailsMaps-grade).
- * Route relations + standalone station nodes → slim GeoJSON shards.
+ * East Asia Railway — zero-recursion Overpass pipeline (v5).
+ * Uses way(r.routes) + out tags geom — NO >; NO out body.
  *
  *   node scripts/fetch-and-clean-transit.js
  *   node scripts/fetch-and-clean-transit.js --region=macau
@@ -15,9 +15,10 @@ const { feature } = require('topojson-client');
 
 const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'public', 'data');
-const USER_AGENT = 'east-asia-railway-map/4.0 (github.com/kingtmc314/east-asia-railway-map)';
-const TILE_PAUSE_MS = 5000;
-const MAX_SHARD_MB = 3.2;
+const USER_AGENT = 'east-asia-railway-map/5.0 (github.com/kingtmc314/east-asia-railway-map)';
+const REGION_PAUSE_MS = 10000;
+const TILE_PAUSE_MS = 10000;
+const MAX_SHARD_MB = 2.2;
 
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
@@ -61,7 +62,7 @@ const REGIONS = {
     bboxes: [[22.15, 113.83, 22.57, 114.45]],
   },
   macau: {
-    iso: 'MO', file: 'macau_clean.json', merged: true,
+    iso: 'MO', file: 'macau_clean.json', merged: true, forceBbox: true,
     bboxes: [[22.05, 113.51, 22.23, 113.65]],
   },
   taiwan: {
@@ -69,7 +70,7 @@ const REGIONS = {
     bboxes: [[21.9, 119.3, 25.3, 122.0]],
   },
   china: {
-    iso: 'CN', merged: false,
+    iso: 'CN', merged: false, forceBbox: true,
     bboxes: [
       { slug: 'china-anhui', bbox: [29.0, 114.0, 35.0, 119.0] },
       { slug: 'china-beijing', bbox: [39.4, 115.4, 41.1, 117.5] },
@@ -110,7 +111,7 @@ const REGIONS = {
     ],
   },
   japan: {
-    iso: 'JP', merged: false,
+    iso: 'JP', merged: false, forceBbox: true,
     bboxes: [
       { slug: 'japan-hokkaido', bbox: [41.0, 139.0, 45.9, 146.0] },
       { slug: 'japan-tohoku', bbox: [36.0, 137.0, 41.5, 141.5] },
@@ -122,8 +123,7 @@ const REGIONS = {
   },
 };
 
-/* ─── geometry ─── */
-const round5 = (n) => Math.round(n * 1e5) / 1e5;
+const round5 = (n) => parseFloat(Number(n).toFixed(5));
 const roundCoords = (c) => c.map(([x, y]) => [round5(x), round5(y)]);
 
 function perpDist(p, a, b) {
@@ -193,7 +193,7 @@ function classifyStation(t, macro, inherited) {
   if (inherited) return inherited;
   if (isHighspeed(t)) return 'highspeed';
   if (t.railway === 'subway' || t.station === 'subway' || t.subway === 'yes') return 'subway';
-  if (/subway|metro|mtr|地下鐵|地下铁|捷運|捷运|地铁|轨道交通|都営|東京メトロ|东京地下|toei/.test(blob(t))) return 'subway';
+  if (/subway|metro|mtr|地下鐵|地下铁|捷運|捷运|地铁|轨道交通|都営|東京メトロ|东京地下|toei|地下鉄/.test(blob(t))) return 'subway';
   if (t.railway === 'tram' || t.railway === 'light_rail' || t.tram === 'yes' || t.light_rail === 'yes') return 'tram';
   if (/light.?rail|輕軌|轻轨|tram|路面電|路面电/.test(blob(t))) return 'tram';
   if (macro === 'china' && /高铁站|高鐵站|客运|火车站/.test(`${t.name || ''}`)) return isHighspeed(t) ? 'highspeed' : 'rail';
@@ -238,24 +238,15 @@ function buildInheritance(relations) {
     const railway_type = routeType(route, rel.tags);
     const color = normColor(rel.tags.colour || rel.tags.color || rel.tags.ref_colour);
     const line_name = rel.tags.name || rel.tags['name:en'] || rel.tags.ref || null;
+    const meta = { railway_type, color, line_name, relation_id: rel.id };
     for (const m of rel.members || []) {
       if (m.type === 'way') {
         const prev = wayMeta.get(m.ref);
-        wayMeta.set(m.ref, {
-          railway_type: prev?.railway_type || railway_type,
-          color: prev?.color || color,
-          line_name: prev?.line_name || line_name,
-          relation_id: rel.id,
-        });
+        wayMeta.set(m.ref, { ...meta, railway_type: prev?.railway_type || railway_type, color: prev?.color || color });
       }
       if (m.type === 'node' && STOP_ROLES.test(m.role || 'stop')) {
         const prev = nodeMeta.get(m.ref);
-        nodeMeta.set(m.ref, {
-          railway_type: prev?.railway_type || railway_type,
-          color: prev?.color || color,
-          line_name: prev?.line_name || line_name,
-          relation_id: rel.id,
-        });
+        nodeMeta.set(m.ref, { ...meta, railway_type: prev?.railway_type || railway_type, color: prev?.color || color });
       }
     }
   }
@@ -267,9 +258,9 @@ function lineProps(t, macro, el, meta) {
   const color = resolveColor(railway_type, macro, t, meta?.color);
   const line_name = meta?.line_name || t.name || t.ref || null;
   return {
-    osm_id: el.id, osm_type: 'way', macro_region: macro,
-    railway_type, color, line_name,
-    relation_id: meta?.relation_id || null,
+    osm_id: el.id, osm_type: el.type === 'relation' ? 'relation' : 'way',
+    macro_region: macro, railway_type, color, line_name,
+    relation_id: meta?.relation_id || (el.type === 'relation' ? el.id : null),
     ...names(t, line_name),
   };
 }
@@ -284,14 +275,52 @@ function stationProps(t, macro, el, meta) {
   };
 }
 
+function geomToCoords(geometry) {
+  if (!geometry?.length) return [];
+  return geometry.map((g) => [round5(g.lon), round5(g.lat)]);
+}
+
+function relationSegments(rel, macro, tol) {
+  const t = rel.tags || {};
+  const route = t.route;
+  if (!route || !ROUTE_RE.test(route)) return [];
+  const railway_type = routeType(route, t);
+  const color = resolveColor(railway_type, macro, t, normColor(t.colour || t.color || t.ref_colour));
+  const line_name = t.name || t['name:en'] || t.ref || null;
+  const meta = { railway_type, color, line_name, relation_id: rel.id };
+  const props = lineProps(pick(t), macro, rel, meta);
+
+  if (!rel.geometry?.length) return [];
+  const coords = geomToCoords(rel.geometry);
+  if (coords.length < 2) return [];
+
+  const simplified = simplify(coords, tol);
+  if (simplified.length < 2 || lenSq(simplified) < 1e-8) return [];
+
+  return [{
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: simplified },
+    properties: props,
+  }];
+}
+
 function osmToFeatures(elements, macro) {
   const tol = TOLERANCE[macro] || TOLERANCE.default;
   const relations = elements.filter((e) => e.type === 'relation');
   const { wayMeta, nodeMeta } = buildInheritance(relations);
   const lines = [];
   const stations = [];
-  const seenW = new Set();
+  const seenL = new Set();
   const seenN = new Set();
+
+  for (const rel of relations) {
+    for (const seg of relationSegments(rel, macro, tol)) {
+      const key = `relation/${rel.id}/${seg.geometry.coordinates[0]?.join(',')}`;
+      if (seenL.has(key)) continue;
+      seenL.add(key);
+      lines.push(seg);
+    }
+  }
 
   for (const el of elements) {
     if (el.type === 'way') {
@@ -299,27 +328,28 @@ function osmToFeatures(elements, macro) {
       const t = el.tags || {};
       if (!meta && !(t.railway && RAIL_WAYS.test(t.railway))) continue;
       if (SKIP_SERVICE.has(t.service)) continue;
-      if (!el.geometry?.length || seenW.has(el.id)) continue;
-      const coords = simplify(el.geometry.map((g) => [g.lon, g.lat]), tol);
+      if (!el.geometry?.length || seenL.has(`way/${el.id}`)) continue;
+      const coords = simplify(geomToCoords(el.geometry), tol);
       if (coords.length < 2 || lenSq(coords) < 1e-8) continue;
-      seenW.add(el.id);
+      seenL.add(`way/${el.id}`);
       lines.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: coords },
         properties: lineProps(pick(t), macro, el, meta),
       });
     }
+
     if (el.type === 'node') {
       const meta = nodeMeta.get(el.id);
       const t = el.tags || {};
       const isStop = !!meta;
-      const isSta = t.railway === 'station' || t.railway === 'halt' || t.railway === 'tram_stop';
+      const isSta = /^(station|halt|tram_stop)$/.test(t.railway || '');
       if (!isStop && !isSta) continue;
       if (seenN.has(el.id)) continue;
       const lon = el.lon ?? el.geometry?.[0];
       const lat = el.lat ?? el.geometry?.[1];
       if (lon == null || lat == null) continue;
-      if (!isStop && macro !== 'hongkong' && macro !== 'macau' && macro !== 'taiwan') {
+      if (!isStop && !['hongkong', 'macau', 'taiwan'].includes(macro)) {
         if (!t.name && !t['name:en'] && !t['name:zh']) continue;
       }
       seenN.add(el.id);
@@ -330,6 +360,7 @@ function osmToFeatures(elements, macro) {
       });
     }
   }
+
   return { lines, stations };
 }
 
@@ -343,42 +374,40 @@ function dedup(features) {
   });
 }
 
-/** Dual-track Overpass: relations + station nodes → member ways with geom only */
-function buildQuery({ iso, bbox }) {
-  const route = 'relation["type"="route"]["route"~"train|subway|light_rail|tram|monorail"]';
-  const nodes = 'node["railway"~"station|halt|tram_stop"]';
-  if (iso && bbox) {
-    const [s, w, n, e] = bbox;
+/**
+ * Zero-recursion Overpass QL.
+ * way(r.routes) fetches ONLY route-member ways (no constituent nodes dump).
+ * out tags geom — cloud-fused geometry, NO >; NO out body.
+ */
+function buildQuery({ iso, bbox, forceBbox }) {
+  const routeSel = 'relation["type"="route"]["route"~"train|subway|light_rail|tram|monorail"]';
+  const nodeSel = 'node["railway"~"station|halt|tram_stop"]';
+
+  if (!forceBbox && iso) {
     return `[out:json][timeout:300];
 area["ISO3166-1"="${iso}"]->.searchArea;
+${routeSel}(area.searchArea)->.routes;
+way(r.routes);
+${nodeSel}(area.searchArea);
 (
-  ${route}(area.searchArea);
-  ${nodes}(area.searchArea);
+  .routes;
+  way(r.routes);
+  ${nodeSel}(area.searchArea);
 );
-out tags;
->;
-out tags geom qt;`;
+out tags geom;`;
   }
-  if (iso) {
-    return `[out:json][timeout:300];
-area["ISO3166-1"="${iso}"]->.searchArea;
-(
-  ${route}(area.searchArea);
-  ${nodes}(area.searchArea);
-);
-out tags;
->;
-out tags geom qt;`;
-  }
+
   const [s, w, n, e] = bbox;
   return `[out:json][timeout:300];
+${routeSel}(${s},${w},${n},${e})->.routes;
+way(r.routes);
+${nodeSel}(${s},${w},${n},${e});
 (
-  ${route}(${s},${w},${n},${e});
-  ${nodes}(${s},${w},${n},${e});
+  .routes;
+  way(r.routes);
+  ${nodeSel}(${s},${w},${n},${e});
 );
-out tags;
->;
-out tags geom qt;`;
+out tags geom;`;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -388,7 +417,7 @@ function curlQuery(url, query) {
     '-sfS', '--max-time', '300', '-A', USER_AGENT,
     '-X', 'POST', '-H', 'Content-Type: application/x-www-form-urlencoded',
     '--data-urlencode', `data=${query}`, url,
-  ], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
+  ], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
   return JSON.parse(out).elements || [];
 }
 
@@ -398,7 +427,7 @@ async function overpass(query, attempt = 0) {
     return curlQuery(url, query);
   } catch (err) {
     if (attempt < 4) {
-      const wait = 8000 * (attempt + 1);
+      const wait = 10000 * (attempt + 1);
       console.warn(`    retry ${attempt + 1} in ${wait / 1000}s — ${err.message}`);
       await sleep(wait);
       return overpass(query, attempt + 1);
@@ -408,21 +437,12 @@ async function overpass(query, attempt = 0) {
 }
 
 async function fetchTile(def, bbox) {
-  const modes = [];
-  if (def.iso && def.merged) modes.push({ iso: def.iso, bbox: null });
-  if (def.iso) modes.push({ iso: def.iso, bbox });
-  modes.push({ iso: null, bbox });
-
-  for (const m of modes) {
-    try {
-      const els = await overpass(buildQuery(m));
-      if (els.length) return els;
-    } catch (err) {
-      if (m === modes[modes.length - 1]) throw err;
-      console.warn(`    fallback query: ${err.message}`);
-    }
-  }
-  return [];
+  const query = buildQuery({
+    iso: def.forceBbox ? null : def.iso,
+    bbox,
+    forceBbox: def.forceBbox || def.iso === 'MO',
+  });
+  return overpass(query);
 }
 
 function writeShard(relPath, regionId, macro, lines, stations, source = 'overpass') {
@@ -432,7 +452,7 @@ function writeShard(relPath, regionId, macro, lines, stations, source = 'overpas
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
   let payload = JSON.stringify({
-    type: 'FeatureCollection', version: 4, region: regionId, macro_region: macro,
+    type: 'FeatureCollection', version: 5, region: regionId, macro_region: macro,
     updated: new Date().toISOString(), source,
     features: [...dl, ...ds], lines: dl, stations: ds,
     stats: { lines: dl.length, stations: ds.length },
@@ -440,16 +460,13 @@ function writeShard(relPath, regionId, macro, lines, stations, source = 'overpas
 
   let mb = payload.length / (1024 * 1024);
   if (mb > MAX_SHARD_MB) {
-    const tol = (TOLERANCE[macro] || 0.001) * 2;
+    const tol = (TOLERANCE[macro] || 0.001) * 2.5;
     dl = dl.map((f) => ({
       ...f,
-      geometry: {
-        type: 'LineString',
-        coordinates: simplify(f.geometry.coordinates, tol),
-      },
+      geometry: { type: 'LineString', coordinates: simplify(f.geometry.coordinates, tol) },
     }));
     payload = JSON.stringify({
-      type: 'FeatureCollection', version: 4, region: regionId, macro_region: macro,
+      type: 'FeatureCollection', version: 5, region: regionId, macro_region: macro,
       updated: new Date().toISOString(), source,
       features: [...dl, ...ds], lines: dl, stations: ds,
       stats: { lines: dl.length, stations: ds.length },
@@ -516,7 +533,7 @@ function topoToFeatures(raw, macro, tol) {
 }
 
 async function fetchRegion(id, def) {
-  console.log(`\n▶ ${id} (${def.bboxes.length} tile(s))`);
+  console.log(`\n▶ ${id} (${def.bboxes.length} tile(s)) — zero-recursion geom`);
   const results = [];
   const acc = { lines: [], stations: [] };
   let ok = false;
@@ -589,13 +606,10 @@ function writeManifest(results) {
   }
   const byFile = new Map((prev.files || []).map((f) => [f.file, f]));
   for (const f of files) byFile.set(f.file, f);
-  const merged = {
-    version: 4,
-    updated: new Date().toISOString(),
-    files: [...byFile.values()],
-  };
-  fs.writeFileSync(manifestPath, JSON.stringify(merged, null, 2));
-  console.log(`\n✓ manifest — ${merged.files.length} file(s)`);
+  fs.writeFileSync(manifestPath, JSON.stringify({
+    version: 5, updated: new Date().toISOString(), files: [...byFile.values()],
+  }, null, 2));
+  console.log(`\n✓ manifest — ${byFile.size} file(s)`);
 }
 
 async function main() {
@@ -606,7 +620,7 @@ async function main() {
   const targets = only ? { [only]: REGIONS[only] } : REGIONS;
   if (only && !REGIONS[only]) { console.error(`Unknown: ${only}`); process.exit(1); }
 
-  console.log('East Asia Railway — dual-track geom pipeline v4');
+  console.log('East Asia Railway — zero-recursion out tags geom pipeline v5');
   const results = [];
   for (const [id, def] of Object.entries(targets)) {
     if (bootstrapMode) {
@@ -615,7 +629,8 @@ async function main() {
       const got = await fetchRegion(id, def);
       results.push(...(got.length ? got : bootstrap(id, def)));
     }
-    await sleep(3000);
+    console.log(`  ⏸ resting ${REGION_PAUSE_MS / 1000}s before next region…`);
+    await sleep(REGION_PAUSE_MS);
   }
   writeManifest(results);
   console.log('\nDone.');
