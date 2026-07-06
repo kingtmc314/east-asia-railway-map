@@ -1,825 +1,434 @@
 'use client';
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 
-const STYLE_CARTO = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-const STYLE_FALLBACK = 'https://tiles.openfreemap.org/styles/liberty';
-const LABEL_FONTS = ['Noto Sans CJK JP Regular', 'Open Sans Regular'];
-const LINE_LABEL_FONTS = ['Noto Sans CJK JP Regular', 'Noto Sans Regular', 'Arial Unicode MS Regular'];
+const ZOOM_DETAIL_THRESHOLD = 0.8;
+const DIM_OPACITY = 0.15;
+const HALO = { stroke: '#111115', strokeWidth: 3, paintOrder: 'stroke' };
 
-const LINES_SOURCE = 'railway-lines';
-const STATIONS_SOURCE = 'railway-stations';
-const EMPTY_FC = { type: 'FeatureCollection', features: [] };
-const LEGEND_DIM = '#334155';
-
-const TEXT_ZH = [
-  'coalesce',
-  ['get', 'name:zh-Hant'],
-  ['get', 'name:zh-HK'],
-  ['get', 'name:zh-TW'],
-  ['get', 'name:zh'],
-  ['get', 'name'],
-];
-
-const TEXT_EN = [
-  'coalesce',
-  ['get', 'name_en'],
-  ['get', 'name:en'],
-  ['get', 'name'],
-];
-
-const TEXT_ZH_LINE = [
-  'coalesce',
-  ['get', 'line_name'],
-  ['get', 'name:zh-Hant'],
-  ['get', 'name:zh-HK'],
-  ['get', 'name:zh-TW'],
-  ['get', 'name:zh'],
-  ['get', 'name'],
-];
-
-const TEXT_EN_LINE = [
-  'coalesce',
-  ['get', 'name_en'],
-  ['get', 'name:en'],
-  ['get', 'line_name'],
-  ['get', 'name'],
-];
-
-const TYPE_PROP = ['coalesce', ['get', 'railway_type'], ['get', 'rail_type'], 'rail'];
-const LINE_COLOR = ['coalesce', ['get', 'color'], '#ffffff'];
-
-const MAX_FETCH_BYTES = 3 * 1024 * 1024;
-const MAX_FEATURES_PER_SHARD = 50000;
-const MAX_TOTAL_FEATURES = 120000;
-
-const RAIL_TYPES = [
-  {
-    id: 'highspeed',
-    color: '#E60012',
-    lineMinzoom: 3,
-    stationMinzoom: 4,
-    lineWidth: ['interpolate', ['linear'], ['zoom'], 3, 2.5, 8, 3.5, 12, 5, 16, 6.5],
-    filter: ['==', TYPE_PROP, 'highspeed'],
-  },
-  {
-    id: 'rail',
-    color: '#005A9C',
-    lineMinzoom: 7,
-    stationMinzoom: 8,
-    lineWidth: ['interpolate', ['linear'], ['zoom'], 7, 1.5, 10, 2.5, 14, 4, 18, 5.5],
-    filter: ['==', TYPE_PROP, 'rail'],
-  },
-  {
-    id: 'subway',
-    color: '#009E60',
-    lineMinzoom: 10,
-    stationMinzoom: 10.5,
-    lineWidth: ['interpolate', ['linear'], ['zoom'], 10, 2, 13, 3, 16, 4.5],
-    filter: ['==', TYPE_PROP, 'subway'],
-  },
-  {
-    id: 'tram',
-    color: '#FFD700',
-    lineMinzoom: 12.5,
-    stationMinzoom: 13,
-    lineWidth: ['interpolate', ['linear'], ['zoom'], 12.5, 1.5, 14, 2.5, 18, 4],
-    filter: ['==', TYPE_PROP, 'tram'],
-  },
-];
-
-const REGIONS = [
-  { id: 'hongkong', center: [114.1694, 22.3193], zoom: 10, cleanFile: '/data/hongkong_clean.json' },
-  { id: 'macau', center: [113.5439, 22.1987], zoom: 11, cleanFile: '/data/macau_clean.json' },
-  { id: 'taiwan', center: [121.0, 23.7], zoom: 8, cleanFile: '/data/taiwan_clean.json' },
-  { id: 'china', center: [116.4074, 39.9042], zoom: 5, cleanMacro: 'china' },
-  { id: 'japan', center: [138.2529, 36.2048], zoom: 6, cleanMacro: 'japan' },
-];
-
-const ALL_REGION_IDS = REGIONS.map((r) => r.id);
-const ALL_TYPE_IDS = RAIL_TYPES.map((t) => t.id);
-const LABEL_LAYER_IDS = RAIL_TYPES.map((t) => `labels-${t.id}`);
-const LINE_LABEL_LAYER_IDS = RAIL_TYPES.map((t) => `line-labels-${t.id}`);
-
-const I18N = {
-  zh: {
-    title: '東亞鐵路 GIS',
-    subtitle: 'Interactive GIS Matrix',
-    locale: '語系',
-    localeZh: '繁中',
-    localeEn: 'EN',
-    regions: '地區',
-    selectAll: '全選',
-    deselectAll: '取消全選',
-    types: '鐵路類型',
-    legend: '動態圖例',
-    legendHint: '勾選類型亮起官方色 · 取消則變灰',
-    zoom: '縮放',
-    loading: '載入鐵路資料中…',
-    ready: '資料就緒 · GPU 硬體加速',
-    mapLoading: '載入底圖中…',
-    regionLabels: {
-      hongkong: '香港', macau: '澳門', taiwan: '台灣', china: '中國大陸', japan: '日本',
-    },
-    typeLabels: {
-      highspeed: '高鐵 / 新幹線', rail: '普通鐵路 / 國鐵', subway: '地鐵 / 捷運', tram: '輕軌 / 路面電車',
-    },
-    typeDesc: {
-      highspeed: '線 Z3 · 站 Z4', rail: '線 Z7 · 站 Z8', subway: '線 Z10 · 站 Z10.5', tram: '線 Z12.5 · 站 Z13',
-    },
-  },
-  en: {
-    title: 'East Asia Railway GIS',
-    subtitle: 'Interactive GIS Matrix',
-    locale: 'Language',
-    localeZh: '繁中',
-    localeEn: 'EN',
-    regions: 'Regions',
-    selectAll: 'Select all',
-    deselectAll: 'Clear all',
-    types: 'Railway types',
-    legend: 'Live legend',
-    legendHint: 'Active types glow · inactive dim to grey',
-    zoom: 'Zoom',
-    loading: 'Loading railway data…',
-    ready: 'Ready · GPU-accelerated',
-    mapLoading: 'Loading basemap…',
-    regionLabels: {
-      hongkong: 'Hong Kong', macau: 'Macau', taiwan: 'Taiwan', china: 'Mainland China', japan: 'Japan',
-    },
-    typeLabels: {
-      highspeed: 'High-speed / Shinkansen', rail: 'Conventional rail', subway: 'Metro / Subway', tram: 'Light rail / Tram',
-    },
-    typeDesc: {
-      highspeed: 'Line Z3 · Stn Z4', rail: 'Line Z7 · Stn Z8', subway: 'Line Z10 · Stn Z10.5', tram: 'Line Z12.5 · Stn Z13',
-    },
-  },
-};
-
-function normalizeType(raw) {
-  if (!raw || raw === 'hsr') return 'highspeed';
-  if (ALL_TYPE_IDS.includes(raw)) return raw;
-  return 'rail';
+function label(station, locale) {
+  return locale === 'en' ? station.name_en || station.name : station.name;
 }
 
-function decodeRaw(raw, macroRegion) {
-  let lines = [];
-  let stations = [];
-  if (Array.isArray(raw.lines)) lines = raw.lines;
-  if (Array.isArray(raw.stations)) stations = raw.stations;
-  if (Array.isArray(raw.features)) {
-    for (const f of raw.features) {
-      const gt = f.geometry?.type;
-      if (gt === 'LineString' || gt === 'MultiLineString') lines.push(f);
-      else if (gt === 'Point') stations.push(f);
-    }
-  }
-
-  const normLine = (f) => {
-    const railway_type = normalizeType(f.properties?.railway_type || f.properties?.rail_type);
-    const color = f.properties?.color || f.properties?.line_color || f.properties?.colour;
-    return {
-      ...f,
-      properties: {
-        ...f.properties,
-        macro_region: f.properties?.macro_region || macroRegion,
-        railway_type,
-        color,
-        line_name: f.properties?.line_name || f.properties?.name,
-      },
-    };
-  };
-
-  const normStation = (f) => ({
-    ...f,
-    properties: {
-      ...f.properties,
-      macro_region: f.properties?.macro_region || macroRegion,
-      railway_type: normalizeType(f.properties?.railway_type || f.properties?.rail_type),
-    },
-  });
-
-  return {
-    lines: lines.flatMap((f) => {
-      if (f.geometry?.type === 'MultiLineString') {
-        return f.geometry.coordinates.map((seg) => normLine({
-          ...f, geometry: { type: 'LineString', coordinates: seg },
-        }));
-      }
-      return [normLine(f)];
-    }),
-    stations: stations.map(normStation),
-  };
+function lineLabel(line, locale) {
+  return locale === 'en' ? line.name_en || line.name : line.name;
 }
 
-function mergeFeatures(existing, incoming) {
-  const seen = new Set(existing.map((f) => `${f.properties?.osm_type}/${f.properties?.osm_id}`));
-  const out = [...existing];
-  for (const f of incoming) {
-    const k = `${f.properties?.osm_type}/${f.properties?.osm_id}`;
-    if (!seen.has(k)) { seen.add(k); out.push(f); }
-  }
-  return out;
+function regionLabel(region, locale) {
+  return locale === 'en' ? region.name_en || region.name : region.name;
 }
 
-async function fetchCleanJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const len = Number(res.headers.get('content-length') || 0);
-  if (len > MAX_FETCH_BYTES) throw new Error(`file too large (${(len / 1024 / 1024).toFixed(1)} MB)`);
-  const text = await res.text();
-  if (!text || text.length < 10) throw new Error('empty response');
-  if (text.length > MAX_FETCH_BYTES) throw new Error(`payload too large (${(text.length / 1024 / 1024).toFixed(1)} MB)`);
-  await new Promise((r) => { setTimeout(r, 0); });
-  let raw;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    throw new Error('invalid JSON');
-  }
-  const total = (raw.lines?.length ?? 0) + (raw.stations?.length ?? 0) || (raw.features?.length ?? 0);
-  if (total > MAX_FEATURES_PER_SHARD) throw new Error(`too many features (${total})`);
-  if (total === 0 && !raw.stats?.lines) throw new Error('empty dataset');
-  return raw;
+function midpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-const yieldMain = () => new Promise((r) => { setTimeout(r, 32); });
-
-function buildRegionFilter(selected) {
-  if (!selected.length) return ['==', ['get', 'macro_region'], '__none__'];
-  return ['in', ['get', 'macro_region'], ['literal', selected]];
+function orthPath(ax, ay, bx, by) {
+  if (ax === bx || ay === by) return `M ${ax} ${ay} L ${bx} ${by}`;
+  const mx = (ax + bx) / 2;
+  return `M ${ax} ${ay} L ${mx} ${ay} L ${mx} ${by} L ${bx} ${by}`;
 }
 
-function buildLayerFilter(typeFilter, regions) {
-  return ['all', typeFilter, buildRegionFilter(regions)];
+function buildSegmentPaths(line, stationMap) {
+  return line.path
+    .map(([fromId, toId]) => {
+      const a = stationMap.get(fromId);
+      const b = stationMap.get(toId);
+      if (!a || !b) return null;
+      return {
+        d: orthPath(a.x, a.y, b.x, b.y),
+        mid: midpoint(a, b),
+        fromId,
+        toId,
+      };
+    })
+    .filter(Boolean);
 }
 
-function lineLabelLayout(textField) {
-  return {
-    'symbol-placement': 'line',
-    'text-field': textField,
-    'text-font': LINE_LABEL_FONTS,
-    'text-size': 11,
-    'text-max-angle': 30,
-    'symbol-spacing': 400,
-    'text-keep-upright': true,
-  };
-}
+function StationNode({ station, locale, opacity, onClick, showLabel }) {
+  const { x, y, type, tier } = station;
+  const isInterchange = type === 'interchange';
+  const isGateway = type === 'gateway';
+  const isHub = tier === 'hub' || tier === 'major';
+  const r = isHub ? 10 : isInterchange ? 8 : 5;
 
-function labelLayout(stationMinzoom) {
-  const dense = stationMinzoom >= 12.5;
-  return {
-    'symbol-placement': 'point',
-    'text-font': LABEL_FONTS,
-    'text-size': ['interpolate', ['linear'], ['zoom'], 8, 10, 11, 11, 14, 13, 18, 15],
-    'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-    'text-radial-offset': 0.55,
-    'text-justify': 'auto',
-    'text-max-width': 12,
-    'text-allow-overlap': dense,
-    'text-ignore-placement': dense,
-    'text-optional': !dense,
-  };
-}
-
-function addRailLayers(map, textField, lineTextField) {
-  for (const rt of RAIL_TYPES) {
-    const lineId = `lines-${rt.id}`;
-    if (!map.getLayer(lineId)) {
-      map.addLayer({
-        id: lineId,
-        type: 'line',
-        source: LINES_SOURCE,
-        minzoom: rt.lineMinzoom,
-        filter: rt.filter,
-        paint: {
-          'line-color': LINE_COLOR,
-          'line-opacity': 0.94,
-          'line-cap': 'round',
-          'line-join': 'round',
-          'line-width': rt.lineWidth,
-        },
-      });
-    }
-
-    const lineLabelId = `line-labels-${rt.id}`;
-    if (!map.getLayer(lineLabelId)) {
-      map.addLayer({
-        id: lineLabelId,
-        type: 'symbol',
-        source: LINES_SOURCE,
-        minzoom: rt.lineMinzoom,
-        filter: rt.filter,
-        layout: lineLabelLayout(lineTextField),
-        paint: {
-          'text-color': LINE_COLOR,
-          'text-halo-color': '#000000',
-          'text-halo-width': 2,
-        },
-      });
-    }
-
-    const dotId = `dots-${rt.id}`;
-    if (!map.getLayer(dotId)) {
-      map.addLayer({
-        id: dotId,
-        type: 'circle',
-        source: STATIONS_SOURCE,
-        minzoom: rt.stationMinzoom,
-        filter: ['==', TYPE_PROP, rt.id],
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], rt.stationMinzoom, 3, 14, 5, 18, 7],
-          'circle-color': '#FFFFFF',
-          'circle-stroke-color': ['coalesce', ['get', 'color'], rt.color],
-          'circle-stroke-width': 2,
-        },
-      });
-    }
-
-    const labelId = `labels-${rt.id}`;
-    if (!map.getLayer(labelId)) {
-      map.addLayer({
-        id: labelId,
-        type: 'symbol',
-        source: STATIONS_SOURCE,
-        minzoom: rt.stationMinzoom,
-        filter: ['==', TYPE_PROP, rt.id],
-        layout: { ...labelLayout(rt.stationMinzoom), 'text-field': textField },
-        paint: {
-          'text-color': '#F8FAFC',
-          'text-halo-color': '#0F172A',
-          'text-halo-width': 1.8,
-        },
-      });
-    }
-  }
-}
-
-function initRailwayStack(map, textField, lineTextField) {
-  if (!map.getSource(LINES_SOURCE)) {
-    map.addSource(LINES_SOURCE, { type: 'geojson', data: EMPTY_FC, tolerance: 0.5, buffer: 64 });
-  }
-  if (!map.getSource(STATIONS_SOURCE)) {
-    map.addSource(STATIONS_SOURCE, { type: 'geojson', data: EMPTY_FC, tolerance: 0, buffer: 0 });
-  }
-  addRailLayers(map, textField, lineTextField);
-}
-
-function applyMatrix(map, regions, types) {
-  for (const rt of RAIL_TYPES) {
-    const active = types.includes(rt.id);
-    const layerFilter = active
-      ? buildLayerFilter(rt.filter, regions)
-      : ['==', ['get', 'macro_region'], '__none__'];
-    for (const id of [`lines-${rt.id}`, `line-labels-${rt.id}`, `dots-${rt.id}`, `labels-${rt.id}`]) {
-      if (!map.getLayer(id)) continue;
-      map.setFilter(id, layerFilter);
-    }
-  }
-}
-
-function applyLocale(map, loc) {
-  const field = loc === 'en' ? TEXT_EN : TEXT_ZH;
-  const lineField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
-  for (const id of LABEL_LAYER_IDS) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', field);
-  }
-  for (const id of LINE_LABEL_LAYER_IDS) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'text-field', lineField);
-  }
-}
-
-const MapStatusBar = memo(function MapStatusBar({
-  mapReady, dataLoading, dataReady, progress, labels,
-}) {
-  if (!mapReady) return <p className="text-[10px] text-slate-400">{labels.mapLoading}</p>;
-  if (dataLoading) {
+  if (isInterchange) {
     return (
-      <div>
-        <p className="text-[10px] text-slate-400">{labels.loading}</p>
-        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-800">
-          <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${progress}%` }} />
-        </div>
-      </div>
+      <g opacity={opacity} style={{ cursor: 'pointer' }} onClick={() => onClick(station)}>
+        <rect
+          x={x - r - 2}
+          y={y - r / 2 - 2}
+          width={(r + 2) * 2}
+          height={r + 4}
+          rx={r}
+          fill="#1a1a22"
+          stroke="#f8fafc"
+          strokeWidth={2}
+        />
+        <circle cx={x} cy={y} r={r * 0.45} fill="#0a0a0f" stroke="#f8fafc" strokeWidth={1.5} />
+        {showLabel && (
+          <text x={x} y={y - r - 8} textAnchor="middle" fill="#f8fafc" fontSize={13} fontWeight={600} {...HALO}>
+            {label(station, locale)}
+          </text>
+        )}
+      </g>
     );
   }
-  if (dataReady) return <p className="text-[10px] text-emerald-400/90">{labels.ready}</p>;
-  return <p className="text-[10px] text-slate-400">{labels.loading}</p>;
-});
 
-function TogglePill({ active, onClick, children }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        'rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150',
-        active
-          ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/25'
-          : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200',
-      ].join(' ')}
-    >
-      {children}
-    </button>
+    <g opacity={opacity} style={{ cursor: 'pointer' }} onClick={() => onClick(station)}>
+      {isGateway && (
+        <circle cx={x} cy={y} r={r + 6} fill="none" stroke="#FFD700" strokeWidth={2} className="gateway-ring" />
+      )}
+      <circle
+        cx={x}
+        cy={y}
+        r={r}
+        fill={isGateway ? '#FFD700' : isHub ? '#f8fafc' : '#94a3b8'}
+        stroke="#111115"
+        strokeWidth={2}
+      />
+      {isHub && <circle cx={x} cy={y} r={r * 0.4} fill="#0a0a0f" />}
+      {showLabel && (
+        <text
+          x={x}
+          y={y - r - (isHub ? 10 : 6)}
+          textAnchor="middle"
+          fill="#f8fafc"
+          fontSize={isHub ? 14 : 11}
+          fontWeight={isHub ? 700 : 500}
+          {...HALO}
+        >
+          {label(station, locale)}
+        </text>
+      )}
+    </g>
   );
 }
 
-function CheckChip({ checked, onChange, label, color }) {
+function GatewayBadge({ station, locale, onFocus }) {
+  if (!station.gateway) return null;
+  const { x, y } = station;
+  const text = locale === 'en' ? station.gateway.label_en : station.gateway.label_zh;
+
   return (
-    <label
-      className={[
-        'flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all duration-150',
-        checked
-          ? 'border-slate-500/60 bg-slate-800/90 shadow-inner'
-          : 'border-slate-700/40 bg-slate-900/40 hover:border-slate-600/50',
-      ].join(' ')}
+    <g
+      className="gateway-badge"
+      transform={`translate(${x + 18}, ${y - 12})`}
+      style={{ cursor: 'pointer' }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onFocus(station.gateway.targetRegion);
+      }}
     >
-      <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
-      <span
-        className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white/20 transition-colors duration-150"
-        style={{ backgroundColor: checked ? color : LEGEND_DIM }}
-      />
-      <span className={`text-xs font-medium transition-colors duration-150 ${checked ? 'text-slate-100' : 'text-slate-400'}`}>
-        {label}
-      </span>
-    </label>
+      <rect x={0} y={-14} width={text.length * 7.5 + 24} height={28} rx={14} fill="#1c1910" stroke="#FFD700" strokeWidth={1.5} />
+      <polygon className="gateway-pulse-arrow" points="8,0 16,-5 16,5" fill="#FFD700" />
+      <text x={20} y={5} fill="#FFD700" fontSize={12} fontWeight={600} {...HALO}>
+        {text}
+      </text>
+    </g>
   );
 }
 
 export default function RailwayMap() {
-  const mapRef = useRef(null);
-  const mapContainerRef = useRef(null);
-  const isInitialized = useRef(false);
-  const layersReadyRef = useRef(false);
-  const styleFallbackRef = useRef(false);
-  const manifestRef = useRef(null);
-  const dataRef = useRef({ lines: [], stations: [] });
-  const loadedFilesRef = useRef(new Set());
-  const fetchedRegionsRef = useRef(new Set());
-  const loadingLockRef = useRef(false);
-  const zoomRafRef = useRef(null);
-  const loadPipelineRef = useRef(null);
-  const matrixRef = useRef({ regions: ['hongkong'], types: ALL_TYPE_IDS, locale: 'zh' });
-
-  const [mapReady, setMapReady] = useState(false);
-  const [dataReady, setDataReady] = useState(false);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [loadProgress, setLoadProgress] = useState(0);
+  const transformRef = useRef(null);
+  const containerRef = useRef(null);
+  const [topology, setTopology] = useState(null);
   const [locale, setLocale] = useState('zh');
-  const [selectedRegions, setSelectedRegions] = useState(['hongkong']);
-  const [selectedTypes, setSelectedTypes] = useState(ALL_TYPE_IDS);
-  const [zoomLevel, setZoomLevel] = useState(10);
+  const [scale, setScale] = useState(0.12);
+  const [focusRegion, setFocusRegion] = useState(null);
+  const [viewport, setViewport] = useState({ w: 1200, h: 800 });
 
-  const t = I18N[locale];
-
-  const pushDataToMap = () => {
-    const map = mapRef.current;
-    if (!map || !layersReadyRef.current || !map.isStyleLoaded()) return;
-    const { lines, stations } = dataRef.current;
-    if (lines.length + stations.length > MAX_TOTAL_FEATURES) {
-      console.warn('dataset too large — deselect some regions');
-      return;
-    }
-    map.getSource(LINES_SOURCE).setData({ type: 'FeatureCollection', features: lines });
-    map.getSource(STATIONS_SOURCE).setData({ type: 'FeatureCollection', features: stations });
-    applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
-  };
-
-  const applyFiltersNow = useCallback((regions, types) => {
-    const map = mapRef.current;
-    if (!map || !layersReadyRef.current) return;
-    applyMatrix(map, regions, types);
-  }, []);
-
-  const queueRegionLoad = useCallback((regionIds) => {
-    const pending = regionIds.filter((id) => !fetchedRegionsRef.current.has(id));
-    if (pending.length && loadPipelineRef.current) {
-      void loadPipelineRef.current(pending);
-    }
-  }, []);
-
-  const flyToRegion = useCallback((regionId) => {
-    const map = mapRef.current;
-    const region = REGIONS.find((r) => r.id === regionId);
-    if (!map || !region) return;
-    map.flyTo({ center: region.center, zoom: region.zoom, duration: 1200, essential: true });
+  useEffect(() => {
+    fetch('/data/railway_topology.json')
+      .then((r) => r.json())
+      .then(setTopology)
+      .catch((err) => console.error('Failed to load topology:', err));
   }, []);
 
   useEffect(() => {
-    if (isInitialized.current || !mapContainerRef.current) return undefined;
-    isInitialized.current = true;
-
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: STYLE_CARTO,
-      center: [114.1694, 22.3193],
-      zoom: 10,
-      minZoom: 2,
-      maxZoom: 18,
-      fadeDuration: 0,
+    const el = containerRef.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(([entry]) => {
+      setViewport({ w: entry.contentRect.width, h: entry.contentRect.height });
     });
-    mapRef.current = map;
-
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
-
-    const setupLayers = () => {
-      const loc = matrixRef.current.locale;
-      const textField = loc === 'en' ? TEXT_EN : TEXT_ZH;
-      const lineTextField = loc === 'en' ? TEXT_EN_LINE : TEXT_ZH_LINE;
-      initRailwayStack(map, textField, lineTextField);
-      layersReadyRef.current = true;
-      applyMatrix(map, matrixRef.current.regions, matrixRef.current.types);
-      if (dataRef.current.lines.length) pushDataToMap();
-    };
-
-    const loadRegionData = async (regionId, onProgress) => {
-      const region = REGIONS.find((r) => r.id === regionId);
-      if (!region || fetchedRegionsRef.current.has(regionId)) return;
-
-      let manifest = manifestRef.current;
-      if (!manifest && region.cleanMacro) {
-        try {
-          manifest = await fetchCleanJson('/data/clean-manifest.json');
-          manifestRef.current = manifest;
-        } catch (err) {
-          console.warn('manifest unavailable:', err.message);
-        }
-      }
-
-      const jobs = [];
-      if (region.cleanFile) {
-        if (!loadedFilesRef.current.has(region.cleanFile)) {
-          jobs.push({ url: region.cleanFile, key: region.cleanFile, macro: regionId });
-        }
-      } else if (region.cleanMacro && manifest?.files) {
-        for (const entry of manifest.files.filter((f) => f.macro === region.cleanMacro)) {
-          if (!loadedFilesRef.current.has(entry.file)) {
-            jobs.push({ url: entry.file, key: entry.file, macro: regionId });
-          }
-        }
-      }
-
-      if (!jobs.length) {
-        fetchedRegionsRef.current.add(regionId);
-        return;
-      }
-
-      for (let i = 0; i < jobs.length; i++) {
-        const job = jobs[i];
-        loadedFilesRef.current.add(job.key);
-        try {
-          const raw = await fetchCleanJson(job.url);
-          await yieldMain();
-          const { lines, stations } = decodeRaw(raw, job.macro);
-          dataRef.current.lines = mergeFeatures(dataRef.current.lines, lines);
-          dataRef.current.stations = mergeFeatures(dataRef.current.stations, stations);
-        } catch (err) {
-          loadedFilesRef.current.delete(job.key);
-          console.warn(`skip ${job.url}:`, err.message);
-        }
-        if (onProgress) onProgress();
-        await yieldMain();
-      }
-
-      fetchedRegionsRef.current.add(regionId);
-      pushDataToMap();
-      setDataReady(dataRef.current.lines.length > 0 || dataRef.current.stations.length > 0);
-    };
-
-    loadPipelineRef.current = async (pending) => {
-      if (loadingLockRef.current || !pending.length) return;
-      loadingLockRef.current = true;
-      setDataLoading(true);
-      setLoadProgress(0);
-
-      let totalShards = 0;
-      let doneShards = 0;
-
-      let manifest = manifestRef.current;
-      const needsManifest = pending.some((id) => REGIONS.find((r) => r.id === id)?.cleanMacro);
-      if (!manifest && needsManifest) {
-        try {
-          manifest = await fetchCleanJson('/data/clean-manifest.json');
-          manifestRef.current = manifest;
-        } catch (err) {
-          console.warn('manifest unavailable:', err.message);
-        }
-      }
-
-      for (const id of pending) {
-        const r = REGIONS.find((x) => x.id === id);
-        if (!r) continue;
-        if (r.cleanFile) {
-          if (!loadedFilesRef.current.has(r.cleanFile)) totalShards += 1;
-        } else if (r.cleanMacro && manifest?.files) {
-          totalShards += manifest.files.filter(
-            (f) => f.macro === r.cleanMacro && !loadedFilesRef.current.has(f.file),
-          ).length;
-        }
-      }
-      if (!totalShards) totalShards = pending.length;
-
-      try {
-        for (const id of pending) {
-          await loadRegionData(id, () => {
-            doneShards += 1;
-            setLoadProgress(Math.round((doneShards / totalShards) * 100));
-          });
-        }
-      } finally {
-        loadingLockRef.current = false;
-        setDataLoading(false);
-      }
-    };
-
-    map.on('load', () => {
-      setupLayers();
-      setMapReady(true);
-      const pending = matrixRef.current.regions.filter((id) => !fetchedRegionsRef.current.has(id));
-      if (pending.length && loadPipelineRef.current) {
-        void loadPipelineRef.current(pending);
-      }
-    });
-
-    map.on('style.load', () => {
-      if (!isInitialized.current) return;
-      layersReadyRef.current = false;
-      setupLayers();
-    });
-
-    map.on('error', (e) => {
-      const msg = e?.error?.message || '';
-      if (!styleFallbackRef.current && /style|sprite|glyphs|fetch/i.test(msg)) {
-        styleFallbackRef.current = true;
-        map.setStyle(STYLE_FALLBACK);
-      }
-    });
-
-    map.on('zoom', () => {
-      if (zoomRafRef.current) return;
-      zoomRafRef.current = requestAnimationFrame(() => {
-        setZoomLevel(Math.round(map.getZoom() * 10) / 10);
-        zoomRafRef.current = null;
-      });
-    });
-
-    fetch(STYLE_CARTO, { method: 'HEAD' }).catch(() => {
-      if (!styleFallbackRef.current) {
-        styleFallbackRef.current = true;
-        map.setStyle(STYLE_FALLBACK);
-      }
-    });
-
-    return () => {
-      if (zoomRafRef.current) cancelAnimationFrame(zoomRafRef.current);
-      loadPipelineRef.current = null;
-      map.remove();
-      mapRef.current = null;
-      isInitialized.current = false;
-      layersReadyRef.current = false;
-      styleFallbackRef.current = false;
-    };
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !layersReadyRef.current) return;
-    applyLocale(map, locale);
-    matrixRef.current = { ...matrixRef.current, locale };
-  }, [locale]);
+  const stationMap = useMemo(() => {
+    if (!topology) return new Map();
+    return new Map(topology.stations.map((s) => [s.id, s]));
+  }, [topology]);
 
-  const setRegions = (next, flyId) => {
-    matrixRef.current = { ...matrixRef.current, regions: next };
-    setSelectedRegions(next);
-    applyFiltersNow(next, matrixRef.current.types);
-    if (flyId) flyToRegion(flyId);
-    queueRegionLoad(next);
-  };
+  const regionMap = useMemo(() => {
+    if (!topology) return new Map();
+    return new Map(topology.regions.map((r) => [r.id, r]));
+  }, [topology]);
 
-  const setTypes = (next) => {
-    matrixRef.current = { ...matrixRef.current, types: next };
-    setSelectedTypes(next);
-    applyFiltersNow(matrixRef.current.regions, next);
-  };
+  const isDetailView = scale >= ZOOM_DETAIL_THRESHOLD || focusRegion !== null;
 
-  const toggleRegion = (id) => {
-    const prev = matrixRef.current.regions;
-    const adding = !prev.includes(id);
-    const next = adding ? [...prev, id] : prev.filter((r) => r !== id);
-    setRegions(next, adding ? id : null);
-  };
+  const stationVisible = useCallback(
+    (station) => {
+      if (!isDetailView) {
+        return station.tier === 'hub' || station.type === 'gateway';
+      }
+      if (focusRegion) return station.region === focusRegion || station.type === 'gateway';
+      return true;
+    },
+    [isDetailView, focusRegion],
+  );
+
+  const lineVisible = useCallback(
+    (line) => {
+      if (!isDetailView) return line.tier === 'backbone' || line.tier === 'crossborder';
+      if (focusRegion) return line.region === focusRegion || line.tier === 'crossborder';
+      return true;
+    },
+    [isDetailView, focusRegion],
+  );
+
+  const regionOpacity = useCallback(
+    (regionId) => {
+      if (!focusRegion || focusRegion === regionId) return 1;
+      return DIM_OPACITY;
+    },
+    [focusRegion],
+  );
+
+  const focusOnRegion = useCallback(
+    (regionId) => {
+      const region = regionMap.get(regionId);
+      if (!region || !transformRef.current || !topology) return;
+
+      setFocusRegion(regionId);
+      const { minX, minY, maxX, maxY } = region.bounds;
+      const rw = maxX - minX;
+      const rh = maxY - minY;
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const padding = 1.15;
+      const targetScale = Math.min(viewport.w / (rw * padding), viewport.h / (rh * padding));
+      const clamped = Math.max(0.15, Math.min(2.5, targetScale));
+      const posX = viewport.w / 2 - cx * clamped;
+      const posY = viewport.h / 2 - cy * clamped;
+      transformRef.current.setTransform(posX, posY, clamped, 400);
+    },
+    [regionMap, topology, viewport],
+  );
+
+  const resetView = useCallback(() => {
+    setFocusRegion(null);
+    transformRef.current?.resetTransform(400);
+  }, []);
+
+  /**
+   * Future Interceptor — station click handler
+   * -------------------------------------------------------
+   * This hook point is reserved for advanced passenger-facing features:
+   *   1. Slide-over panel with station metadata (lines, region, interchange graph)
+   *   2. Per-country timetable API (CN 12306, JP JR, TW THSR, HK MTR) via edge functions
+   *   3. Transfer flow visualisation — highlight connecting lines & walking interchanges
+   *   4. Deep-link to /station/[id] for shareable views
+   * Mount a <StationDetailDrawer station={station} onClose={...} /> here when ready.
+   */
+  const handleStationClick = useCallback((station) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.info('[RailwayMap] station intercept:', station.id, station.name);
+    }
+    focusOnRegion(station.region);
+  }, [focusOnRegion]);
+
+  const lineGeometries = useMemo(() => {
+    if (!topology) return [];
+    return topology.lines
+      .filter(lineVisible)
+      .map((line) => ({
+        line,
+        segments: buildSegmentPaths(line, stationMap),
+        opacity: regionOpacity(line.region),
+      }));
+  }, [topology, lineVisible, stationMap, regionOpacity]);
+
+  const gatewayStations = useMemo(
+    () => (topology ? topology.stations.filter((s) => s.gateway) : []),
+    [topology],
+  );
+
+  if (!topology) {
+    return (
+      <div ref={containerRef} className="flex h-full w-full items-center justify-center bg-[#0a0a0f] text-slate-400">
+        載入東亞鐵路拓撲矩陣…
+      </div>
+    );
+  }
+
+  const { canvas } = topology;
+  const vbW = canvas.maxX - canvas.minX;
+  const vbH = canvas.maxY - canvas.minY;
 
   return (
-    <div className="relative flex h-full w-full bg-slate-950">
-      <aside className="relative z-20 flex w-[min(100%,320px)] shrink-0 flex-col border-r border-slate-700/50 bg-slate-900/85 backdrop-blur-md">
-        <div className="flex flex-col gap-5 overflow-y-auto p-4 sm:p-5">
-          <header>
-            <div className="mb-1 flex items-start justify-between gap-2">
-              <div>
-                <h1 className="text-base font-bold tracking-tight text-white">{t.title}</h1>
-                <p className="text-[10px] uppercase tracking-widest text-slate-500">{t.subtitle}</p>
-              </div>
-              <div className="text-right text-[10px] text-slate-500">
-                {t.zoom}{' '}
-                <span className="font-mono font-semibold text-sky-400">{zoomLevel}</span>
-              </div>
-            </div>
-            <div className="mt-3">
-              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-500">{t.locale}</p>
-              <div className="inline-flex rounded-xl bg-slate-800/90 p-1 ring-1 ring-slate-700/60">
-                <TogglePill active={locale === 'zh'} onClick={() => setLocale('zh')}>{t.localeZh}</TogglePill>
-                <TogglePill active={locale === 'en'} onClick={() => setLocale('en')}>{t.localeEn}</TogglePill>
-              </div>
-            </div>
-          </header>
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[#0a0a0f]">
+      <style>{`
+        @keyframes gateway-pulse {
+          0%, 100% { opacity: 1; transform: translateX(0); }
+          50% { opacity: 0.45; transform: translateX(4px); }
+        }
+        @keyframes gateway-ring-pulse {
+          0%, 100% { opacity: 0.9; r: 16; }
+          50% { opacity: 0.35; }
+        }
+        .gateway-pulse-arrow { animation: gateway-pulse 1.6s ease-in-out infinite; }
+        .gateway-badge:hover rect { filter: brightness(1.25); }
+        .gateway-ring { animation: gateway-ring-pulse 2s ease-in-out infinite; }
+      `}</style>
 
-          <section>
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-300">{t.regions}</h2>
-              <div className="flex gap-1">
-                <button type="button" onClick={() => setRegions(ALL_REGION_IDS)} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-sky-400 hover:bg-slate-800">{t.selectAll}</button>
-                <button type="button" onClick={() => setRegions([])} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-800">{t.deselectAll}</button>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5">
-              {REGIONS.map((r) => (
-                <CheckChip key={r.id} checked={selectedRegions.includes(r.id)} onChange={() => toggleRegion(r.id)} label={t.regionLabels[r.id]} color="#38BDF8" />
-              ))}
-            </div>
-          </section>
+      {/* Top bar */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between p-3">
+        <div className="pointer-events-auto rounded-lg border border-slate-700/80 bg-[#111115]/90 px-4 py-2 backdrop-blur-sm">
+          <h1 className="text-sm font-bold text-slate-100">
+            {locale === 'en' ? 'East Asia Railway Grid' : '東亞鐵路非比例拓撲矩陣'}
+          </h1>
+          <p className="text-xs text-slate-400">
+            {locale === 'en'
+              ? `${topology.stations.length} stations · ${topology.lines.length} lines`
+              : `${topology.stations.length} 站 · ${topology.lines.length} 線`}
+          </p>
+        </div>
 
-          <section>
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-300">{t.types}</h2>
-              <div className="flex gap-1">
-                <button type="button" onClick={() => setTypes(ALL_TYPE_IDS)} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-sky-400 hover:bg-slate-800">{t.selectAll}</button>
-                <button type="button" onClick={() => setTypes([])} className="rounded-md px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-800">{t.deselectAll}</button>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5">
-              {RAIL_TYPES.map((rt) => (
-                <CheckChip
-                  key={rt.id}
-                  checked={selectedTypes.includes(rt.id)}
-                  onChange={() => setTypes(selectedTypes.includes(rt.id) ? selectedTypes.filter((x) => x !== rt.id) : [...selectedTypes, rt.id])}
-                  label={t.typeLabels[rt.id]}
-                  color={rt.color}
+        <div className="pointer-events-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => setLocale((l) => (l === 'zh' ? 'en' : 'zh'))}
+            className="rounded-md border border-slate-600 bg-[#111115]/90 px-3 py-1.5 text-xs font-semibold text-slate-200 backdrop-blur-sm hover:border-amber-400 hover:text-amber-300"
+          >
+            {locale === 'zh' ? '繁中 / EN' : 'EN / 繁中'}
+          </button>
+          <button
+            type="button"
+            onClick={resetView}
+            className="rounded-md border border-slate-600 bg-[#111115]/90 px-3 py-1.5 text-xs text-slate-300 backdrop-blur-sm hover:border-slate-400"
+          >
+            {locale === 'en' ? 'Reset view' : '全圖重置'}
+          </button>
+        </div>
+      </div>
+
+      {/* Region focus chips */}
+      <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-20 flex flex-wrap justify-center gap-1.5">
+        {topology.regions.map((region) => (
+          <button
+            key={region.id}
+            type="button"
+            onClick={() => focusOnRegion(region.id)}
+            className={`pointer-events-auto rounded-full border px-2.5 py-1 text-[11px] font-medium backdrop-blur-sm transition ${
+              focusRegion === region.id
+                ? 'border-amber-400 bg-amber-400/20 text-amber-200'
+                : 'border-slate-600 bg-[#111115]/85 text-slate-300 hover:border-slate-400'
+            }`}
+          >
+            {regionLabel(region, locale)}
+          </button>
+        ))}
+      </div>
+
+      {/* Zoom hint */}
+      <div className="pointer-events-none absolute bottom-14 right-3 z-20 rounded border border-slate-700/60 bg-[#111115]/75 px-2 py-1 text-[10px] text-slate-500">
+        {isDetailView
+          ? locale === 'en'
+            ? 'Detail layer active'
+            : '細節圖層已啟用'
+          : locale === 'en'
+            ? 'Overview — zoom in for metro'
+            : '全景 — 放大顯示地鐵網'}
+        {' · '}
+        {(scale * 100).toFixed(0)}%
+      </div>
+
+      <TransformWrapper
+        ref={transformRef}
+        initialScale={0.12}
+        minScale={0.04}
+        maxScale={4}
+        limitToBounds={false}
+        centerOnInit
+        wheel={{ step: 0.08 }}
+        pinch={{ step: 5 }}
+        onTransformed={(_ref, state) => setScale(state.scale)}
+      >
+        <TransformComponent
+          wrapperClass="!h-full !w-full"
+          contentClass="!h-full !w-full"
+        >
+          <svg
+            viewBox={`${canvas.minX} ${canvas.minY} ${vbW} ${vbH}`}
+            className="h-full w-full"
+            style={{ touchAction: 'none' }}
+          >
+            <rect x={canvas.minX} y={canvas.minY} width={vbW} height={vbH} fill="#0a0a0f" />
+
+            {/* Lines */}
+            <g id="railway-lines">
+              {lineGeometries.map(({ line, segments, opacity }) =>
+                segments.map((seg, i) => (
+                  <g key={`${line.id}-${i}`} opacity={opacity}>
+                    <path
+                      d={seg.d}
+                      fill="none"
+                      stroke={line.color}
+                      strokeWidth={line.tier === 'backbone' ? 5 : line.tier === 'crossborder' ? 4 : 3}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity={line.tier === 'metro' ? 0.85 : 1}
+                    />
+                    {i === 0 && isDetailView && (
+                      <text
+                        x={seg.mid.x}
+                        y={seg.mid.y - 10}
+                        textAnchor="middle"
+                        fill={line.color}
+                        fontSize={12}
+                        fontWeight={600}
+                        {...HALO}
+                      >
+                        {lineLabel(line, locale)}
+                      </text>
+                    )}
+                  </g>
+                )),
+              )}
+            </g>
+
+            {/* Stations */}
+            <g id="railway-stations">
+              {topology.stations
+                .filter(stationVisible)
+                .map((station) => (
+                  <StationNode
+                    key={station.id}
+                    station={station}
+                    locale={locale}
+                    opacity={regionOpacity(station.region)}
+                    onClick={handleStationClick}
+                    showLabel={isDetailView || station.tier === 'hub'}
+                  />
+                ))}
+            </g>
+
+            {/* Gateway extension indicators */}
+            <g id="gateway-indicators">
+              {gatewayStations.map((station) => (
+                <GatewayBadge
+                  key={`gw-${station.id}`}
+                  station={station}
+                  locale={locale}
+                  onFocus={focusOnRegion}
                 />
               ))}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-slate-700/50 bg-slate-950/60 p-3">
-            <h2 className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-slate-300">{t.legend}</h2>
-            <p className="mb-3 text-[10px] text-slate-500">{t.legendHint}</p>
-            <ul className="space-y-2.5">
-              {RAIL_TYPES.map((rt) => {
-                const active = selectedTypes.includes(rt.id);
-                const barColor = active ? rt.color : LEGEND_DIM;
-                return (
-                  <li key={rt.id} className="flex items-center gap-3 transition-opacity duration-150" style={{ opacity: active ? 1 : 0.55 }}>
-                    <span
-                      className="h-1 w-10 shrink-0 rounded-full transition-all duration-150"
-                      style={{
-                        backgroundColor: barColor,
-                        boxShadow: active && rt.id === 'highspeed' ? `0 0 8px ${rt.color}88` : undefined,
-                      }}
-                    />
-                    <div>
-                      <p className={`text-xs font-medium transition-colors duration-150 ${active ? 'text-slate-200' : 'text-slate-500'}`}>
-                        {t.typeLabels[rt.id]}
-                      </p>
-                      <p className="text-[10px] text-slate-500">{t.typeDesc[rt.id]}</p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        </div>
-
-        <div className="mt-auto border-t border-slate-700/50 px-4 py-3">
-          <MapStatusBar
-            mapReady={mapReady}
-            dataLoading={dataLoading}
-            dataReady={dataReady}
-            progress={loadProgress}
-            labels={t}
-          />
-        </div>
-      </aside>
-
-      <div className="relative min-h-0 min-w-0 flex-1">
-        <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" />
-        {!mapReady && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-900">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
-          </div>
-        )}
-      </div>
+            </g>
+          </svg>
+        </TransformComponent>
+      </TransformWrapper>
     </div>
   );
 }
