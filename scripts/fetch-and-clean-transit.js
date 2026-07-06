@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * East Asia Railway — way-only Overpass pipeline (v7).
- * Multi-mirror round-robin + exponential backoff for 429 defence.
+ * East Asia Railway — way-only Overpass pipeline (v7.2).
+ * Per-region mirror pools + exponential backoff for 429/504 defence.
  *
  *   node scripts/fetch-and-clean-transit.js
  *   node scripts/fetch-and-clean-transit.js --region=taiwan
@@ -15,23 +15,35 @@ const { feature } = require('topojson-client');
 
 const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'public', 'data');
-const USER_AGENT = 'east-asia-railway-map/7.0 (github.com/kingtmc314/east-asia-railway-map)';
+const USER_AGENT = 'east-asia-railway-map/7.2 (github.com/kingtmc314/east-asia-railway-map)';
 const REGION_PAUSE_MS = 15000;
 const TILE_PAUSE_MS = 15000;
 const MAX_SHARD_MB = 1.2;
 const MAX_RETRIES = 12;
 
-const OVERPASS_ENDPOINTS = [
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.nchc.org.tw/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.openstreetmap.ru/api/interpreter',
-];
-
-const REGION_ENDPOINT_PREF = {
-  taiwan: 'https://overpass.nchc.org.tw/api/interpreter',
-  japan: 'https://overpass.kumi.systems/api/interpreter',
+const MIRROR = {
+  KUMI: 'https://overpass.kumi.systems/api/interpreter',
+  DE: 'https://overpass-api.de/api/interpreter',
+  RU: 'https://overpass.openstreetmap.ru/api/interpreter',
+  FR: 'https://overpass.openstreetmap.fr/api/interpreter',
+  NCHC: 'https://overpass.nchc.org.tw/api/interpreter',
 };
+
+/**
+ * Per-region mirror rotation pools (first = preferred).
+ * NCHC only in taiwan — unreachable from many GitHub Actions runners.
+ */
+const REGION_MIRROR_POOL = {
+  hongkong: [MIRROR.KUMI, MIRROR.DE, MIRROR.RU, MIRROR.FR],
+  macau: [MIRROR.KUMI, MIRROR.DE, MIRROR.RU],
+  taiwan: [MIRROR.NCHC, MIRROR.KUMI, MIRROR.DE, MIRROR.RU],
+  china: [MIRROR.KUMI, MIRROR.DE, MIRROR.RU, MIRROR.FR],
+  japan: [MIRROR.KUMI, MIRROR.DE, MIRROR.RU, MIRROR.FR],
+};
+
+const DEFAULT_MIRROR_POOL = [MIRROR.KUMI, MIRROR.DE, MIRROR.RU];
+
+const deadMirrors = new Set();
 
 const RAIL_WAYS = /^(rail|subway|tram|light_rail|monorail|narrow_gauge)$/;
 const SKIP_SERVICE = /yard|siding|spur|switch|crossover/i;
@@ -153,8 +165,6 @@ const REGIONS = {
 
 const WAY_SEL = 'way["railway"~"rail|subway|light_rail|tram|monorail"]["service"!~"yard|siding|spur|switch"]["abandoned"!="yes"]["construction"!="yes"]';
 const NODE_SEL = 'node["railway"~"station|halt|tram_stop"]';
-
-let mirrorCursor = 0;
 
 const round5 = (n) => parseFloat(Number(n).toFixed(5));
 const roundCoords = (c) => c.map(([x, y]) => [round5(x), round5(y)]);
@@ -375,18 +385,36 @@ out tags geom;`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function endpointOrder(regionId) {
-  const pref = REGION_ENDPOINT_PREF[regionId];
-  if (!pref) return OVERPASS_ENDPOINTS;
-  return [pref, ...OVERPASS_ENDPOINTS.filter((u) => u !== pref)];
+  const pool = REGION_MIRROR_POOL[regionId] || DEFAULT_MIRROR_POOL;
+  const alive = pool.filter((u) => !deadMirrors.has(u));
+  return alive.length ? alive : pool;
+}
+
+function mirrorLabel(url) {
+  return new URL(url).hostname.replace('overpass.', '').replace('.api', '');
+}
+
+function isDnsOrNetwork(errMsg) {
+  return /could not resolve|ENOTFOUND|EAI_AGAIN|curl: \(6\)|curl: \(7\)|connection refused|network is unreachable/i.test(errMsg);
 }
 
 function curlQuery(url, query) {
-  const raw = execFileSync('curl', [
-    '-sS', '--max-time', '180', '-A', USER_AGENT,
-    '-w', '\n__HTTP_STATUS__:%{http_code}',
-    '-X', 'POST', '-H', 'Content-Type: application/x-www-form-urlencoded',
-    '--data-urlencode', `data=${query}`, url,
-  ], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
+  let raw;
+  try {
+    raw = execFileSync('curl', [
+      '-sS', '--max-time', '180', '-A', USER_AGENT,
+      '-w', '\n__HTTP_STATUS__:%{http_code}',
+      '-X', 'POST', '-H', 'Content-Type: application/x-www-form-urlencoded',
+      '--data-urlencode', `data=${query}`, url,
+    ], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
+  } catch (err) {
+    const msg = err.stderr?.toString() || err.message || String(err);
+    if (isDnsOrNetwork(msg)) {
+      deadMirrors.add(url);
+      throw new Error(`DNS/network unreachable: ${new URL(url).hostname}`);
+    }
+    throw new Error(msg.split('\n')[0].slice(0, 200));
+  }
 
   const marker = raw.lastIndexOf('\n__HTTP_STATUS__:');
   const body = marker >= 0 ? raw.slice(0, marker) : raw;
@@ -413,18 +441,20 @@ function curlQuery(url, query) {
 
 async function overpass(query, regionId, attempt = 0) {
   const order = endpointOrder(regionId);
-  const url = order[(mirrorCursor + attempt) % order.length];
+  if (!order.length) throw new Error('no Overpass mirrors available');
+
+  const url = order[attempt % order.length];
 
   try {
     const els = await curlQuery(url, query);
     return els;
   } catch (err) {
-    const retriable = /429|503|504|rate|timeout|timed out|reset|empty|invalid json/i.test(err.message);
+    const retriable = /429|503|504|rate|timeout|timed out|reset|empty|invalid json|DNS\/network unreachable/i.test(err.message);
     if (!retriable || attempt >= MAX_RETRIES) throw err;
 
-    mirrorCursor = (mirrorCursor + 1) % OVERPASS_ENDPOINTS.length;
-    const backoffMs = 15000 * (attempt + 1);
-    const nextUrl = order[(mirrorCursor + attempt + 1) % order.length];
+    const dnsSkip = isDnsOrNetwork(err.message);
+    const backoffMs = dnsSkip ? 2000 : 15000 * (attempt + 1);
+    const nextUrl = order[(attempt + 1) % order.length];
     console.warn(`    ⚠ ${err.message} — mirror rotate → ${new URL(nextUrl).hostname}, backoff ${backoffMs / 1000}s`);
     await sleep(backoffMs);
     return overpass(query, regionId, attempt + 1);
@@ -517,7 +547,8 @@ function topoToFeatures(raw, macro, tol) {
 }
 
 async function fetchRegion(id, def) {
-  console.log(`\n▶ ${id} (${def.bboxes.length} tile(s)) — way-only + mirror pool`);
+  const mirrors = endpointOrder(id).map(mirrorLabel).join(' → ');
+  console.log(`\n▶ ${id} (${def.bboxes.length} tile(s)) — way-only + mirrors [${mirrors}]`);
   const results = [];
   const acc = { lines: [], stations: [] };
   let ok = false;
@@ -604,7 +635,7 @@ async function main() {
   const targets = only ? { [only]: REGIONS[only] } : REGIONS;
   if (only && !REGIONS[only]) { console.error(`Unknown: ${only}`); process.exit(1); }
 
-  console.log('East Asia Railway — way-only mirror pool pipeline v7');
+  console.log('East Asia Railway — way-only per-region mirror pool pipeline v7.2');
   const results = [];
   for (const [id, def] of Object.entries(targets)) {
     if (bootstrapMode) {
