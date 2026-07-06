@@ -1,11 +1,12 @@
 {
-  "version": 2,
-  "updated": "2026-07-06T01:19:08.706Z",
+  "version": 3,
+  "updated": "2026-07-06T04:04:53.759Z",
+  "style": "official-replica-geometry",
   "canvas": {
-    "minX": -1500,
-    "minY": -3500,
-    "maxX": 6800,
-    "maxY": 1220
+    "minX": -1920,
+    "minY": -4080,
+    "maxX": 6020,
+    "maxY": 880
   },
   "regions": [
     {
@@ -13,32 +14,32 @@
       "name": "華北華中",
       "name_en": "North & Central China",
       "bounds": {
-        "minX": -500,
-        "minY": -3400,
-        "maxX": 1100,
-        "maxY": -2400
-      }
-    },
-    {
-      "id": "guangxi",
-      "name": "廣西門戶",
-      "name_en": "Guangxi Gateway",
-      "bounds": {
-        "minX": -1400,
-        "minY": -1200,
-        "maxX": -500,
-        "maxY": -800
+        "minX": -120,
+        "minY": -3820,
+        "maxX": 1180,
+        "maxY": -2740
       }
     },
     {
       "id": "china_south",
-      "name": "華南粵港澳",
-      "name_en": "South China & GBA",
+      "name": "華南骨幹",
+      "name_en": "South China Backbone",
       "bounds": {
-        "minX": -500,
-        "minY": -1500,
-        "maxX": 500,
-        "maxY": -900
+        "minX": -680,
+        "minY": -2520,
+        "maxX": 620,
+        "maxY": -420
+      }
+    },
+    {
+      "id": "guangxi",
+      "name": "廣西西南門戶",
+      "name_en": "Guangxi Southwest Gateway",
+      "bounds": {
+        "minX": -1700,
+        "minY": -2520,
+        "maxX": -260,
+        "maxY": -1440
       }
     },
     {
@@ -46,10 +47,10 @@
       "name": "香港",
       "name_en": "Hong Kong",
       "bounds": {
-        "minX": -350,
-        "minY": -200,
-        "maxX": 350,
-        "maxY": 350
+        "minX": -140,
+        "minY": -1760,
+        "maxX": 560,
+        "maxY": -240
       }
     },
     {
@@ -57,10 +58,10 @@
       "name": "澳門",
       "name_en": "Macau",
       "bounds": {
-        "minX": -650,
-        "minY": 50,
-        "maxX": -150,
-        "maxY": 450
+        "minX": -880,
+        "minY": -1060,
+        "maxX": -380,
+        "maxY": -560
       }
     },
     {
@@ -68,32 +69,32 @@
       "name": "台灣",
       "name_en": "Taiwan",
       "bounds": {
-        "minX": 1300,
-        "minY": 200,
-        "maxX": 2000,
-        "maxY": 1000
+        "minX": 1580,
+        "minY": -620,
+        "maxX": 2220,
+        "maxY": 620
       }
     },
     {
       "id": "japan_south",
-      "name": "日本西南",
-      "name_en": "Japan West & Kyushu",
+      "name": "日本西南縱軸",
+      "name_en": "Japan Southwest Axis",
       "bounds": {
-        "minX": 2800,
-        "minY": -300,
-        "maxX": 4000,
-        "maxY": -700
+        "minX": 3000,
+        "minY": -2160,
+        "maxX": 4680,
+        "maxY": -920
       }
     },
     {
       "id": "japan_tokyo",
-      "name": "東京圈",
+      "name": "東京首都圈",
       "name_en": "Greater Tokyo",
       "bounds": {
-        "minX": 4200,
-        "minY": -1900,
-        "maxX": 4800,
-        "maxY": -1300
+        "minX": 4720,
+        "minY": -2220,
+        "maxX": 5580,
+        "maxY": -1520
       }
     },
     {
@@ -101,681 +102,869 @@
       "name": "東北北海道",
       "name_en": "Tohoku & Hokkaido",
       "bounds": {
-        "minX": 5300,
-        "minY": -3400,
-        "maxX": 6700,
-        "maxY": -2200
+        "minX": 5260,
+        "minY": -3680,
+        "maxX": 5780,
+        "maxY": -2140
       }
     }
   ],
   "stations": [
     {
-      "type": "gateway",
-      "tier": "hub",
+      "id": "CN_BeijingWest",
+      "name": "北京西",
+      "name_en": "Beijing West",
+      "x": 20,
+      "y": -3720,
       "region": "china_north",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring"
+    },
+    {
       "id": "CN_BeijingSouth",
       "name": "北京南",
       "name_en": "Beijing South",
-      "x": 0,
-      "y": -3200,
+      "x": 220,
+      "y": -3680,
+      "region": "china_north",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring",
       "gateway": {
         "targetRegion": "china_north",
-        "label_zh": "往 華北高鐵網 ➔",
-        "label_en": "To North China HSR ➔"
+        "label_zh": "➔ 華北高鐵中樞",
+        "label_en": "➔ North China HSR Core"
       }
     },
     {
-      "type": "interchange",
-      "tier": "hub",
-      "region": "china_north",
       "id": "CN_ZhengzhouEast",
       "name": "鄭州東",
       "name_en": "Zhengzhou East",
-      "x": 0,
-      "y": -2800
+      "x": 220,
+      "y": -3280,
+      "region": "china_north",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "capsule"
     },
     {
-      "type": "regular",
-      "tier": "hub",
-      "region": "china_north",
       "id": "CN_Wuhan",
       "name": "武漢",
       "name_en": "Wuhan",
-      "x": 0,
-      "y": -2400
+      "x": 220,
+      "y": -2880,
+      "region": "china_north",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "capsule"
     },
     {
-      "type": "regular",
-      "tier": "hub",
-      "region": "china_south",
-      "id": "CN_ChangshaSouth",
-      "name": "長沙南",
-      "name_en": "Changsha South",
-      "x": 0,
-      "y": -2000
-    },
-    {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "china_south",
       "id": "CN_GuangzhouSouth",
       "name": "廣州南",
       "name_en": "Guangzhou South",
-      "x": 0,
-      "y": -1600,
+      "x": 220,
+      "y": -2280,
+      "region": "china_south",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring",
       "gateway": {
         "targetRegion": "guangxi",
-        "label_zh": "往 廣西/東盟門戶 ➔",
-        "label_en": "To Guangxi / ASEAN Gateway ➔"
+        "label_zh": "➔ 進入 廣西 / 西南高鐵走廊",
+        "label_en": "➔ Enter Guangxi / Southwest HSR"
       }
     },
     {
-      "type": "regular",
-      "tier": "hub",
-      "region": "china_south",
       "id": "CN_ShenzhenNorth",
       "name": "深圳北",
       "name_en": "Shenzhen North",
-      "x": 0,
-      "y": -1300
+      "x": 220,
+      "y": -1980,
+      "region": "china_south",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "capsule"
     },
     {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "hongkong",
-      "id": "HK_WestKowloon",
-      "name": "香港西九龍",
-      "name_en": "Hong Kong West Kowloon",
-      "x": 0,
-      "y": -1050,
-      "gateway": {
-        "targetRegion": "hongkong",
-        "label_zh": "往 香港市區 ➔",
-        "label_en": "To Hong Kong Urban ➔"
-      }
+      "id": "CN_Futian",
+      "name": "福田",
+      "name_en": "Futian",
+      "x": 260,
+      "y": -1830,
+      "region": "china_south",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
-      "type": "regular",
-      "tier": "hub",
+      "id": "CN_JinanWest",
+      "name": "濟南西",
+      "name_en": "Jinan West",
+      "x": 480,
+      "y": -3400,
       "region": "china_north",
-      "id": "CN_XianNorth",
-      "name": "西安北",
-      "name_en": "Xi'an North",
-      "x": -400,
-      "y": -3000
+      "type": "regular",
+      "tier": "major"
     },
     {
-      "type": "regular",
-      "tier": "hub",
-      "region": "china_north",
       "id": "CN_NanjingSouth",
       "name": "南京南",
       "name_en": "Nanjing South",
-      "x": 600,
-      "y": -2900
+      "x": 760,
+      "y": -3140,
+      "region": "china_north",
+      "type": "regular",
+      "tier": "major"
     },
     {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "china_north",
       "id": "CN_ShanghaiHongqiao",
       "name": "上海虹橋",
       "name_en": "Shanghai Hongqiao",
-      "x": 900,
-      "y": -3100,
-      "gateway": {
-        "targetRegion": "china_north",
-        "label_zh": "往 華東樞紐 ➔",
-        "label_en": "To East China Hub ➔"
-      }
+      "x": 1040,
+      "y": -2920,
+      "region": "china_north",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring"
     },
     {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "guangxi",
       "id": "CN_NanningEast",
       "name": "南寧東",
       "name_en": "Nanning East",
-      "x": -1200,
-      "y": -1000,
+      "x": -1560,
+      "y": -1700,
+      "region": "guangxi",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring",
       "gateway": {
         "targetRegion": "guangxi",
-        "label_zh": "往 西南門戶 ➔",
-        "label_en": "To Southwest Gateway ➔"
+        "label_zh": "➔ 西南門戶 / 東盟軸心",
+        "label_en": "➔ Southwest Gateway / ASEAN Axis"
       }
     },
     {
-      "type": "interchange",
-      "tier": "hub",
+      "id": "CN_GuilinScenery",
+      "name": "桂林山水站",
+      "name_en": "Guilin Landscape",
+      "x": -1220,
+      "y": -2040,
       "region": "guangxi",
-      "id": "CN_Guilin",
-      "name": "桂林",
-      "name_en": "Guilin",
-      "x": -900,
-      "y": -1100
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
-      "type": "regular",
-      "tier": "hub",
+      "id": "CN_GuiyangNorth",
+      "name": "貴陽北",
+      "name_en": "Guiyang North",
+      "x": -980,
+      "y": -2300,
       "region": "guangxi",
+      "type": "regular",
+      "tier": "major"
+    },
+    {
       "id": "CN_ZhaoqingEast",
       "name": "肇慶東",
       "name_en": "Zhaoqing East",
-      "x": -500,
-      "y": -1400
+      "x": -520,
+      "y": -2360,
+      "region": "guangxi",
+      "type": "regular",
+      "tier": "major"
     },
     {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "china_south",
-      "id": "SZ_Luohu",
-      "name": "深圳羅湖",
-      "name_en": "Shenzhen Luohu",
-      "x": 150,
-      "y": -1150,
-      "gateway": {
-        "targetRegion": "hongkong",
-        "label_zh": "往 香港東鐵綫 ➔",
-        "label_en": "To HK East Rail ➔"
-      }
-    },
-    {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "hongkong",
-      "id": "HK_LoWu",
-      "name": "羅湖",
-      "name_en": "Lo Wu",
-      "x": 150,
-      "y": -900,
-      "gateway": {
-        "targetRegion": "china_south",
-        "label_zh": "往 深圳/華南高鐵 ➔",
-        "label_en": "To Shenzhen / South China HSR ➔"
-      }
-    },
-    {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "china_south",
       "id": "CN_Zhuhai",
       "name": "珠海",
       "name_en": "Zhuhai",
-      "x": -350,
-      "y": -1200,
+      "x": -540,
+      "y": -700,
+      "region": "china_south",
+      "type": "gateway",
+      "tier": "major",
+      "marker": "red_ring",
       "gateway": {
         "targetRegion": "macau",
-        "label_zh": "往 澳門輕軌 ➔",
-        "label_en": "To Macau LRT ➔"
+        "label_zh": "➔ 進入 澳門城際",
+        "label_en": "➔ Enter Macau Corridor"
       }
     },
     {
-      "type": "interchange",
+      "id": "SZ_Luohu",
+      "name": "深圳羅湖",
+      "name_en": "Shenzhen Luohu",
+      "x": 340,
+      "y": -560,
+      "region": "china_south",
+      "type": "gateway",
       "tier": "major",
+      "marker": "red_ring",
+      "gateway": {
+        "targetRegion": "hongkong",
+        "label_zh": "➔ 進入 香港東鐵綫",
+        "label_en": "➔ Enter HK East Rail"
+      }
+    },
+    {
+      "id": "HK_WestKowloon",
+      "name": "香港西九龍",
+      "name_en": "Hong Kong West Kowloon",
+      "x": 260,
+      "y": -1680,
       "region": "hongkong",
+      "type": "gateway",
+      "tier": "hub",
+      "marker": "red_ring",
+      "gateway": {
+        "targetRegion": "hongkong",
+        "label_zh": "➔ 進入 香港核心路網",
+        "label_en": "➔ Enter HK Core Network"
+      }
+    },
+    {
       "id": "HK_Central",
       "name": "中環",
       "name_en": "Central",
-      "x": 0,
-      "y": 0
+      "x": 80,
+      "y": -1500,
+      "region": "hongkong",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "capsule"
     },
     {
-      "type": "interchange",
-      "tier": "major",
-      "region": "hongkong",
       "id": "HK_Admiralty",
       "name": "金鐘",
       "name_en": "Admiralty",
-      "x": 120,
-      "y": 0
+      "x": 220,
+      "y": -1500,
+      "region": "hongkong",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
-      "region": "hongkong",
       "id": "HK_WanChai",
       "name": "灣仔",
       "name_en": "Wan Chai",
-      "x": 240,
-      "y": 0
+      "x": 320,
+      "y": -1500,
+      "region": "hongkong",
+      "type": "regular",
+      "tier": "regular"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
-      "region": "hongkong",
       "id": "HK_CausewayBay",
       "name": "銅鑼灣",
       "name_en": "Causeway Bay",
-      "x": 360,
-      "y": 0
+      "x": 430,
+      "y": -1500,
+      "region": "hongkong",
+      "type": "regular",
+      "tier": "regular"
     },
     {
-      "type": "interchange",
-      "tier": "major",
-      "region": "hongkong",
       "id": "HK_TST",
       "name": "尖沙咀",
       "name_en": "Tsim Sha Tsui",
-      "x": 0,
-      "y": 120
+      "x": 220,
+      "y": -1320,
+      "region": "hongkong",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
+      "id": "HK_Jordan",
+      "name": "佐敦",
+      "name_en": "Jordan",
+      "x": 220,
+      "y": -1200,
       "region": "hongkong",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
       "id": "HK_MongKok",
       "name": "旺角",
       "name_en": "Mong Kok",
-      "x": 0,
-      "y": 240
-    },
-    {
+      "x": 220,
+      "y": -1080,
+      "region": "hongkong",
       "type": "interchange",
       "tier": "major",
+      "marker": "red_ring"
+    },
+    {
+      "id": "HK_PrinceEdward",
+      "name": "太子",
+      "name_en": "Prince Edward",
+      "x": 150,
+      "y": -1010,
       "region": "hongkong",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
+      "id": "HK_MeiFoo",
+      "name": "美孚",
+      "name_en": "Mei Foo",
+      "x": 70,
+      "y": -930,
+      "region": "hongkong",
+      "type": "interchange",
+      "tier": "regular",
+      "marker": "capsule"
+    },
+    {
+      "id": "HK_TsuenWan",
+      "name": "荃灣",
+      "name_en": "Tsuen Wan",
+      "x": -30,
+      "y": -830,
+      "region": "hongkong",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
       "id": "HK_HungHom",
       "name": "紅磡",
       "name_en": "Hung Hom",
-      "x": 240,
-      "y": 360
+      "x": 340,
+      "y": -1320,
+      "region": "hongkong",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
+      "id": "HK_MongKokEast",
+      "name": "旺角東",
+      "name_en": "Mong Kok East",
+      "x": 340,
+      "y": -1180,
       "region": "hongkong",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
       "id": "HK_KowloonTong",
       "name": "九龍塘",
       "name_en": "Kowloon Tong",
-      "x": 120,
-      "y": 360
-    },
-    {
+      "x": 340,
+      "y": -1040,
+      "region": "hongkong",
       "type": "interchange",
       "tier": "regular",
-      "region": "hongkong",
-      "id": "HK_TaiWai",
-      "name": "大圍",
-      "name_en": "Tai Wai",
-      "x": 120,
-      "y": 480
+      "marker": "capsule"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
-      "region": "hongkong",
       "id": "HK_ShaTin",
       "name": "沙田",
       "name_en": "Sha Tin",
-      "x": 120,
-      "y": 600
-    },
-    {
+      "x": 340,
+      "y": -900,
+      "region": "hongkong",
       "type": "interchange",
       "tier": "regular",
+      "marker": "capsule"
+    },
+    {
+      "id": "HK_TaiPoMarket",
+      "name": "大埔墟",
+      "name_en": "Tai Po Market",
+      "x": 340,
+      "y": -760,
       "region": "hongkong",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
       "id": "HK_Fanling",
       "name": "粉嶺",
       "name_en": "Fanling",
-      "x": 150,
-      "y": 720
-    },
-    {
-      "type": "interchange",
-      "tier": "regular",
-      "region": "macau",
-      "id": "MO_Barra",
-      "name": "媽閣",
-      "name_en": "Barra",
-      "x": -500,
-      "y": 200
-    },
-    {
+      "x": 340,
+      "y": -620,
+      "region": "hongkong",
       "type": "regular",
-      "tier": "regular",
-      "region": "macau",
-      "id": "MO_Taipa",
-      "name": "氹仔客運碼頭",
-      "name_en": "Taipa Ferry",
-      "x": -400,
-      "y": 300
+      "tier": "regular"
     },
     {
+      "id": "HK_SheungShui",
+      "name": "上水",
+      "name_en": "Sheung Shui",
+      "x": 340,
+      "y": -500,
+      "region": "hongkong",
       "type": "interchange",
       "tier": "regular",
-      "region": "macau",
-      "id": "MO_Cotai",
-      "name": "路氹東",
-      "name_en": "Cotai East",
-      "x": -300,
-      "y": 300
+      "marker": "capsule"
     },
     {
+      "id": "HK_LoWu",
+      "name": "羅湖",
+      "name_en": "Lo Wu",
+      "x": 340,
+      "y": -380,
+      "region": "hongkong",
       "type": "gateway",
-      "tier": "hub",
+      "tier": "major",
+      "marker": "red_ring",
+      "gateway": {
+        "targetRegion": "china_south",
+        "label_zh": "➔ 進入 深圳 / 中國高鐵網絡",
+        "label_en": "➔ Enter Shenzhen / China HSR"
+      }
+    },
+    {
+      "id": "HK_LokMaChau",
+      "name": "落馬洲",
+      "name_en": "Lok Ma Chau",
+      "x": 460,
+      "y": -380,
+      "region": "hongkong",
+      "type": "gateway",
+      "tier": "major",
+      "marker": "red_ring",
+      "gateway": {
+        "targetRegion": "china_south",
+        "label_zh": "➔ 進入 福田 / 華南高鐵",
+        "label_en": "➔ Enter Futian / South China HSR"
+      }
+    },
+    {
+      "id": "MO_Qingmao",
+      "name": "青茂",
+      "name_en": "Qingmao",
+      "x": -760,
+      "y": -980,
       "region": "macau",
+      "type": "gateway",
+      "tier": "major",
+      "marker": "red_ring",
+      "gateway": {
+        "targetRegion": "china_south",
+        "label_zh": "➔ 進入 珠海北岸",
+        "label_en": "➔ Enter Zhuhai North Gate"
+      }
+    },
+    {
       "id": "MO_BorderGate",
       "name": "關閘",
       "name_en": "Border Gate",
-      "x": -400,
-      "y": 150,
-      "gateway": {
-        "targetRegion": "china_south",
-        "label_zh": "往 珠海/珠三角 ➔",
-        "label_en": "To Zhuhai / PRD ➔"
-      }
+      "x": -700,
+      "y": -940,
+      "region": "macau",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
-      "type": "gateway",
-      "tier": "regular",
+      "id": "MO_Barra",
+      "name": "媽閣",
+      "name_en": "Barra",
+      "x": -700,
+      "y": -820,
       "region": "macau",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
+      "id": "MO_TaipaFerry",
+      "name": "氹仔客運碼頭",
+      "name_en": "Taipa Ferry Terminal",
+      "x": -700,
+      "y": -740,
+      "region": "macau",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
+      "id": "MO_CotaiEast",
+      "name": "路氹東",
+      "name_en": "Cotai East",
+      "x": -700,
+      "y": -680,
+      "region": "macau",
+      "type": "interchange",
+      "tier": "regular",
+      "marker": "capsule"
+    },
+    {
       "id": "MO_Hengqin",
       "name": "橫琴",
       "name_en": "Hengqin",
-      "x": -250,
-      "y": 100,
+      "x": -700,
+      "y": -620,
+      "region": "macau",
+      "type": "gateway",
+      "tier": "major",
+      "marker": "red_ring",
       "gateway": {
         "targetRegion": "china_south",
-        "label_zh": "往 橫琴口岸 ➔",
-        "label_en": "To Hengqin Port ➔"
+        "label_zh": "➔ 進入 橫琴 / 大陸城際",
+        "label_en": "➔ Enter Hengqin / Mainland Rail"
       }
     },
     {
-      "type": "regular",
-      "tier": "hub",
-      "region": "taiwan",
-      "id": "TW_Taipei",
-      "name": "台北",
-      "name_en": "Taipei",
-      "x": 1600,
-      "y": 400
-    },
-    {
-      "type": "interchange",
-      "tier": "hub",
-      "region": "taiwan",
-      "id": "TW_Banqiao",
-      "name": "板橋",
-      "name_en": "Banqiao",
-      "x": 1600,
-      "y": 500
-    },
-    {
-      "type": "regular",
-      "tier": "hub",
-      "region": "taiwan",
-      "id": "TW_Taichung",
-      "name": "台中",
-      "name_en": "Taichung",
-      "x": 1600,
-      "y": 650
-    },
-    {
-      "type": "regular",
-      "tier": "hub",
-      "region": "taiwan",
-      "id": "TW_Tainan",
-      "name": "台南",
-      "name_en": "Tainan",
-      "x": 1600,
-      "y": 800
-    },
-    {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "taiwan",
-      "id": "TW_Zuoying",
-      "name": "左營",
-      "name_en": "Zuoying",
-      "x": 1600,
-      "y": 920,
-      "gateway": {
-        "targetRegion": "taiwan",
-        "label_zh": "往 高雄/南台灣 ➔",
-        "label_en": "To Kaohsiung / South Taiwan ➔"
-      }
-    },
-    {
-      "type": "interchange",
-      "tier": "regular",
-      "region": "taiwan",
       "id": "TW_Keelung",
       "name": "基隆",
       "name_en": "Keelung",
-      "x": 1750,
-      "y": 350
+      "x": 1840,
+      "y": -520,
+      "region": "taiwan",
+      "type": "regular",
+      "tier": "regular"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
+      "id": "TW_Taipei",
+      "name": "台北",
+      "name_en": "Taipei",
+      "x": 1700,
+      "y": -430,
       "region": "taiwan",
-      "id": "TW_Yilan",
-      "name": "宜蘭",
-      "name_en": "Yilan",
-      "x": 1850,
-      "y": 500
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
+      "id": "TW_Banqiao",
+      "name": "板橋",
+      "name_en": "Banqiao",
+      "x": 1700,
+      "y": -300,
       "region": "taiwan",
-      "id": "TW_Hualien",
-      "name": "花蓮",
-      "name_en": "Hualien",
-      "x": 1950,
-      "y": 650
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
+      "id": "TW_Taichung",
+      "name": "台中",
+      "name_en": "Taichung",
+      "x": 1700,
+      "y": -20,
       "region": "taiwan",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
+    },
+    {
+      "id": "TW_Tainan",
+      "name": "台南",
+      "name_en": "Tainan",
+      "x": 1700,
+      "y": 220,
+      "region": "taiwan",
+      "type": "regular",
+      "tier": "major"
+    },
+    {
+      "id": "TW_Zuoying",
+      "name": "左營",
+      "name_en": "Zuoying",
+      "x": 1700,
+      "y": 430,
+      "region": "taiwan",
+      "type": "gateway",
+      "tier": "hub",
+      "marker": "red_ring",
+      "gateway": {
+        "targetRegion": "taiwan",
+        "label_zh": "➔ 南台灣高鐵終點",
+        "label_en": "➔ South Taiwan HSR Terminal"
+      }
+    },
+    {
+      "id": "TW_Pingtung",
+      "name": "屏東",
+      "name_en": "Pingtung",
+      "x": 1880,
+      "y": 520,
+      "region": "taiwan",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
       "id": "TW_Taitung",
       "name": "台東",
       "name_en": "Taitung",
-      "x": 1950,
-      "y": 850
-    },
-    {
-      "type": "interchange",
-      "tier": "major",
+      "x": 2060,
+      "y": 260,
       "region": "taiwan",
-      "id": "TW_Kaohsiung",
-      "name": "高雄",
-      "name_en": "Kaohsiung",
-      "x": 1750,
-      "y": 920
+      "type": "regular",
+      "tier": "regular"
     },
     {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "japan_south",
-      "id": "JP_Kagoshima",
+      "id": "TW_Hualien",
+      "name": "花蓮",
+      "name_en": "Hualien",
+      "x": 2060,
+      "y": -80,
+      "region": "taiwan",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
+      "id": "TW_Yilan",
+      "name": "宜蘭",
+      "name_en": "Yilan",
+      "x": 1940,
+      "y": -320,
+      "region": "taiwan",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
+      "id": "JP_KagoshimaChuo",
       "name": "鹿兒島中央",
       "name_en": "Kagoshima-Chuo",
-      "x": 3000,
-      "y": -200,
-      "gateway": {
-        "targetRegion": "japan_south",
-        "label_zh": "往 九州南端 ➔",
-        "label_en": "To Kyushu South ➔"
-      }
+      "x": 3160,
+      "y": -1060,
+      "region": "japan_south",
+      "type": "regular",
+      "tier": "hub"
     },
     {
-      "type": "regular",
-      "tier": "hub",
-      "region": "japan_south",
       "id": "JP_Hakata",
       "name": "博多",
       "name_en": "Hakata",
-      "x": 3200,
-      "y": -400
+      "x": 3380,
+      "y": -1240,
+      "region": "japan_south",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "capsule"
     },
     {
-      "type": "regular",
-      "tier": "hub",
-      "region": "japan_south",
       "id": "JP_Hiroshima",
       "name": "廣島",
       "name_en": "Hiroshima",
-      "x": 3400,
-      "y": -600
+      "x": 3720,
+      "y": -1400,
+      "region": "japan_south",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "japan_south",
       "id": "JP_ShinOsaka",
       "name": "新大阪",
       "name_en": "Shin-Osaka",
-      "x": 3600,
-      "y": -800,
-      "gateway": {
-        "targetRegion": "japan_south",
-        "label_zh": "往 關西圈 ➔",
-        "label_en": "To Kansai ➔"
-      }
+      "x": 4080,
+      "y": -1540,
+      "region": "japan_south",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring"
     },
     {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "japan_south",
       "id": "JP_Nagoya",
       "name": "名古屋",
       "name_en": "Nagoya",
-      "x": 3800,
-      "y": -1000,
-      "gateway": {
-        "targetRegion": "japan_tokyo",
-        "label_zh": "往 東京/東海道 ➔",
-        "label_en": "To Tokyo / Tokaido ➔"
-      }
+      "x": 4480,
+      "y": -1700,
+      "region": "japan_south",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "capsule"
     },
     {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "japan_south",
       "id": "JP_Tokyo",
       "name": "東京",
       "name_en": "Tokyo",
-      "x": 4500,
-      "y": -1600,
-      "gateway": {
-        "targetRegion": "japan_tokyo",
-        "label_zh": "往 東京圈地鐵 ➔",
-        "label_en": "To Tokyo Metro ➔"
-      }
-    },
-    {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "japan_south",
-      "id": "JP_Sendai",
-      "name": "仙台",
-      "name_en": "Sendai",
-      "x": 5500,
-      "y": -2400,
-      "gateway": {
-        "targetRegion": "japan_north",
-        "label_zh": "往 東北/北海道 ➔",
-        "label_en": "To Tohoku / Hokkaido ➔"
-      }
-    },
-    {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "japan_south",
-      "id": "JP_ShinHakodate",
-      "name": "新函館北斗",
-      "name_en": "Shin-Hakodate-Hokuto",
-      "x": 6300,
-      "y": -3100,
-      "gateway": {
-        "targetRegion": "japan_north",
-        "label_zh": "往 北海道 ➔",
-        "label_en": "To Hokkaido ➔"
-      }
-    },
-    {
-      "type": "gateway",
-      "tier": "hub",
-      "region": "japan_south",
-      "id": "JP_Sapporo",
-      "name": "札幌",
-      "name_en": "Sapporo",
-      "x": 6500,
-      "y": -3200,
-      "gateway": {
-        "targetRegion": "japan_north",
-        "label_zh": "往 北海道樞紐 ➔",
-        "label_en": "To Hokkaido Hub ➔"
-      }
-    },
-    {
-      "type": "interchange",
-      "tier": "major",
+      "x": 5220,
+      "y": -1900,
       "region": "japan_tokyo",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring"
+    },
+    {
       "id": "JP_Ueno",
       "name": "上野",
       "name_en": "Ueno",
-      "x": 4600,
-      "y": -1600
+      "x": 5360,
+      "y": -2080,
+      "region": "japan_tokyo",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "capsule",
+      "gateway": {
+        "targetRegion": "japan_north",
+        "label_zh": "➔ 進入 東北 / 北海道新幹線",
+        "label_en": "➔ Enter Tohoku / Hokkaido Shinkansen"
+      }
     },
     {
-      "type": "interchange",
-      "tier": "major",
+      "id": "JP_Akihabara",
+      "name": "秋葉原",
+      "name_en": "Akihabara",
+      "x": 5480,
+      "y": -1900,
       "region": "japan_tokyo",
+      "type": "interchange",
+      "tier": "regular",
+      "marker": "capsule"
+    },
+    {
       "id": "JP_Shinagawa",
       "name": "品川",
       "name_en": "Shinagawa",
-      "x": 4400,
-      "y": -1600
+      "x": 5000,
+      "y": -2080,
+      "region": "japan_tokyo",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
-      "region": "japan_tokyo",
       "id": "JP_Shibuya",
       "name": "澀谷",
       "name_en": "Shibuya",
-      "x": 4400,
-      "y": -1700
-    },
-    {
+      "x": 4880,
+      "y": -1900,
+      "region": "japan_tokyo",
       "type": "interchange",
       "tier": "major",
-      "region": "japan_tokyo",
+      "marker": "capsule"
+    },
+    {
       "id": "JP_Shinjuku",
       "name": "新宿",
       "name_en": "Shinjuku",
-      "x": 4500,
-      "y": -1700
+      "x": 5000,
+      "y": -1720,
+      "region": "japan_tokyo",
+      "type": "interchange",
+      "tier": "hub",
+      "marker": "red_ring"
     },
     {
-      "type": "interchange",
-      "tier": "regular",
-      "region": "japan_tokyo",
       "id": "JP_Ikebukuro",
       "name": "池袋",
       "name_en": "Ikebukuro",
-      "x": 4600,
-      "y": -1700
+      "x": 5200,
+      "y": -1640,
+      "region": "japan_tokyo",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
     },
     {
+      "id": "JP_Nippori",
+      "name": "日暮里",
+      "name_en": "Nippori",
+      "x": 5400,
+      "y": -1720,
+      "region": "japan_tokyo",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
+      "id": "JP_Ochanomizu",
+      "name": "御茶之水",
+      "name_en": "Ochanomizu",
+      "x": 5100,
+      "y": -1900,
+      "region": "japan_tokyo",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
+    },
+    {
+      "id": "JP_Nakano",
+      "name": "中野",
+      "name_en": "Nakano",
+      "x": 4780,
+      "y": -1900,
+      "region": "japan_tokyo",
+      "type": "regular",
+      "tier": "regular"
+    },
+    {
+      "id": "JP_Omiya",
+      "name": "大宮",
+      "name_en": "Omiya",
+      "x": 5360,
+      "y": -2280,
+      "region": "japan_north",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
+    },
+    {
+      "id": "JP_Sendai",
+      "name": "仙台",
+      "name_en": "Sendai",
+      "x": 5360,
+      "y": -2640,
+      "region": "japan_north",
       "type": "interchange",
       "tier": "hub",
-      "region": "japan_north",
+      "marker": "capsule"
+    },
+    {
       "id": "JP_Morioka",
       "name": "盛岡",
       "name_en": "Morioka",
-      "x": 6000,
-      "y": -2800
+      "x": 5360,
+      "y": -2980,
+      "region": "japan_north",
+      "type": "interchange",
+      "tier": "major",
+      "marker": "capsule"
+    },
+    {
+      "id": "JP_ShinHakodate",
+      "name": "新函館北斗",
+      "name_en": "Shin-Hakodate-Hokuto",
+      "x": 5660,
+      "y": -3320,
+      "region": "japan_north",
+      "type": "gateway",
+      "tier": "hub",
+      "marker": "red_ring",
+      "gateway": {
+        "targetRegion": "japan_north",
+        "label_zh": "➔ 進入 北海道核心段",
+        "label_en": "➔ Enter Hokkaido Core Segment"
+      }
+    },
+    {
+      "id": "JP_Sapporo",
+      "name": "札幌",
+      "name_en": "Sapporo",
+      "x": 5660,
+      "y": -3600,
+      "region": "japan_north",
+      "type": "gateway",
+      "tier": "hub",
+      "marker": "red_ring"
     }
   ],
   "lines": [
     {
-      "id": "CN_JINGGUANG",
+      "id": "CN_CAPITAL_CONNECTOR",
+      "name": "首都樞紐聯絡線",
+      "name_en": "Capital Hub Connector",
+      "color": "#666666",
+      "region": "china_north",
+      "tier": "regional",
+      "path": [
+        [
+          "CN_BeijingWest",
+          "CN_BeijingSouth"
+        ]
+      ]
+    },
+    {
+      "id": "CN_JINGGUANG_HSR",
       "name": "京廣高鐵",
-      "name_en": "Beijing–Guangzhou HSR",
-      "color": "#E60012",
+      "name_en": "Beijing-Guangzhou HSR",
+      "color": "#666666",
       "region": "china_north",
       "tier": "backbone",
       "path": [
@@ -789,10 +978,6 @@
         ],
         [
           "CN_Wuhan",
-          "CN_ChangshaSouth"
-        ],
-        [
-          "CN_ChangshaSouth",
           "CN_GuangzhouSouth"
         ],
         [
@@ -801,24 +986,28 @@
         ],
         [
           "CN_ShenzhenNorth",
+          "CN_Futian"
+        ],
+        [
+          "CN_Futian",
           "HK_WestKowloon"
         ]
       ]
     },
     {
-      "id": "CN_JINGHU",
+      "id": "CN_JINGHU_HSR",
       "name": "京滬高鐵",
-      "name_en": "Beijing–Shanghai HSR",
-      "color": "#E60012",
+      "name_en": "Beijing-Shanghai HSR",
+      "color": "#666666",
       "region": "china_north",
       "tier": "backbone",
       "path": [
         [
           "CN_BeijingSouth",
-          "CN_XianNorth"
+          "CN_JinanWest"
         ],
         [
-          "CN_XianNorth",
+          "CN_JinanWest",
           "CN_NanjingSouth"
         ],
         [
@@ -828,19 +1017,19 @@
       ]
     },
     {
-      "id": "CN_GUANGXI_SPINE",
-      "name": "南廣貴廣城際",
-      "name_en": "Nanning–Guangzhou Intercity",
-      "color": "#005A9C",
+      "id": "CN_NANGUANG_HSR",
+      "name": "南廣高鐵",
+      "name_en": "Nanning-Guangzhou HSR",
+      "color": "#666666",
       "region": "guangxi",
       "tier": "backbone",
       "path": [
         [
           "CN_NanningEast",
-          "CN_Guilin"
+          "CN_GuilinScenery"
         ],
         [
-          "CN_Guilin",
+          "CN_GuilinScenery",
           "CN_ZhaoqingEast"
         ],
         [
@@ -850,10 +1039,32 @@
       ]
     },
     {
-      "id": "XB_SZ_HK",
-      "name": "廣深口岸",
-      "name_en": "Shenzhen–HK Crossing",
-      "color": "#FFD700",
+      "id": "CN_GUIGUANG_HSR",
+      "name": "貴廣高鐵",
+      "name_en": "Guiyang-Guangzhou HSR",
+      "color": "#666666",
+      "region": "guangxi",
+      "tier": "backbone",
+      "path": [
+        [
+          "CN_GuiyangNorth",
+          "CN_GuilinScenery"
+        ],
+        [
+          "CN_GuilinScenery",
+          "CN_ZhaoqingEast"
+        ],
+        [
+          "CN_ZhaoqingEast",
+          "CN_GuangzhouSouth"
+        ]
+      ]
+    },
+    {
+      "id": "XB_SZ_HK_LUOHU",
+      "name": "深港口岸（羅湖）",
+      "name_en": "Shenzhen-HK Crossing (Lo Wu)",
+      "color": "#ffd400",
       "region": "china_south",
       "tier": "crossborder",
       "path": [
@@ -868,10 +1079,24 @@
       ]
     },
     {
-      "id": "HK_ISL",
+      "id": "XB_SZ_HK_LOKMA",
+      "name": "深港口岸（落馬洲）",
+      "name_en": "Shenzhen-HK Crossing (Lok Ma Chau)",
+      "color": "#ffd400",
+      "region": "china_south",
+      "tier": "crossborder",
+      "path": [
+        [
+          "CN_Futian",
+          "HK_LokMaChau"
+        ]
+      ]
+    },
+    {
+      "id": "HK_ISLAND_LINE",
       "name": "港島綫",
       "name_en": "Island Line",
-      "color": "#007DC5",
+      "color": "#0070bc",
       "region": "hongkong",
       "tier": "metro",
       "path": [
@@ -890,116 +1115,158 @@
       ]
     },
     {
-      "id": "HK_TWL",
+      "id": "HK_TSUEN_WAN_LINE",
       "name": "荃灣綫",
       "name_en": "Tsuen Wan Line",
-      "color": "#E3002C",
+      "color": "#e60012",
       "region": "hongkong",
       "tier": "metro",
       "path": [
         [
-          "HK_Central",
+          "HK_Admiralty",
           "HK_TST"
         ],
         [
           "HK_TST",
+          "HK_Jordan"
+        ],
+        [
+          "HK_Jordan",
           "HK_MongKok"
+        ],
+        [
+          "HK_MongKok",
+          "HK_PrinceEdward"
+        ],
+        [
+          "HK_PrinceEdward",
+          "HK_MeiFoo"
+        ],
+        [
+          "HK_MeiFoo",
+          "HK_TsuenWan"
         ]
       ]
     },
     {
-      "id": "HK_EAL",
+      "id": "HK_EAST_RAIL_LINE",
       "name": "東鐵綫",
       "name_en": "East Rail Line",
-      "color": "#5EB6E4",
+      "color": "#53b7e8",
       "region": "hongkong",
       "tier": "metro",
       "path": [
         [
+          "HK_Admiralty",
+          "HK_HungHom"
+        ],
+        [
           "HK_HungHom",
+          "HK_MongKokEast"
+        ],
+        [
+          "HK_MongKokEast",
           "HK_KowloonTong"
         ],
         [
           "HK_KowloonTong",
-          "HK_TaiWai"
-        ],
-        [
-          "HK_TaiWai",
           "HK_ShaTin"
         ],
         [
           "HK_ShaTin",
+          "HK_TaiPoMarket"
+        ],
+        [
+          "HK_TaiPoMarket",
           "HK_Fanling"
         ],
         [
           "HK_Fanling",
+          "HK_SheungShui"
+        ],
+        [
+          "HK_SheungShui",
           "HK_LoWu"
         ]
       ]
     },
     {
-      "id": "HK_CONNECT",
+      "id": "HK_EAST_RAIL_SPUR",
+      "name": "東鐵綫支線",
+      "name_en": "East Rail Spur",
+      "color": "#53b7e8",
+      "region": "hongkong",
+      "tier": "metro",
+      "path": [
+        [
+          "HK_SheungShui",
+          "HK_LokMaChau"
+        ]
+      ]
+    },
+    {
+      "id": "HK_WEST_KOWLOON_LINK",
       "name": "西九龍接駁",
       "name_en": "West Kowloon Link",
-      "color": "#5EB6E4",
+      "color": "#53b7e8",
       "region": "hongkong",
       "tier": "metro",
       "path": [
         [
           "HK_WestKowloon",
           "HK_TST"
-        ],
-        [
-          "HK_TST",
-          "HK_HungHom"
         ]
       ]
     },
     {
-      "id": "MO_LRT",
+      "id": "MO_LRT_AXIS",
       "name": "澳門輕軌",
       "name_en": "Macau LRT",
-      "color": "#9B1096",
+      "color": "#8e56d8",
       "region": "macau",
       "tier": "regional",
       "path": [
         [
-          "MO_Barra",
-          "MO_Taipa"
-        ],
-        [
-          "MO_Taipa",
-          "MO_Cotai"
-        ],
-        [
-          "MO_Cotai",
+          "MO_Qingmao",
           "MO_BorderGate"
         ],
         [
           "MO_BorderGate",
+          "MO_Barra"
+        ],
+        [
+          "MO_Barra",
+          "MO_TaipaFerry"
+        ],
+        [
+          "MO_TaipaFerry",
+          "MO_CotaiEast"
+        ],
+        [
+          "MO_CotaiEast",
           "MO_Hengqin"
         ]
       ]
     },
     {
-      "id": "XB_MO_ZH",
-      "name": "珠澳口岸",
-      "name_en": "Macau–Zhuhai Crossing",
-      "color": "#FFD700",
+      "id": "XB_MACAU_ZHUHAI",
+      "name": "珠澳城際接口",
+      "name_en": "Zhuhai-Macau Rail Gateway",
+      "color": "#ffd400",
       "region": "macau",
       "tier": "crossborder",
       "path": [
         [
-          "MO_BorderGate",
+          "MO_Hengqin",
           "CN_Zhuhai"
         ]
       ]
     },
     {
-      "id": "TW_THSR",
+      "id": "TW_HSR_MAIN",
       "name": "台灣高鐵",
-      "name_en": "Taiwan HSR",
-      "color": "#FF6600",
+      "name_en": "Taiwan High Speed Rail",
+      "color": "#f60",
       "region": "taiwan",
       "tier": "backbone",
       "path": [
@@ -1022,12 +1289,12 @@
       ]
     },
     {
-      "id": "TW_TRA_N",
-      "name": "台鐵北環",
-      "name_en": "TRA North Ring",
-      "color": "#003366",
+      "id": "TW_TRA_RING",
+      "name": "台鐵環島幹線",
+      "name_en": "TRA Island Ring",
+      "color": "#005bac",
       "region": "taiwan",
-      "tier": "metro",
+      "tier": "regional",
       "path": [
         [
           "TW_Keelung",
@@ -1039,70 +1306,82 @@
         ],
         [
           "TW_Banqiao",
-          "TW_Yilan"
-        ]
-      ]
-    },
-    {
-      "id": "TW_TRA_E",
-      "name": "台鐵東部幹線",
-      "name_en": "TRA Eastern Line",
-      "color": "#003366",
-      "region": "taiwan",
-      "tier": "metro",
-      "path": [
-        [
-          "TW_Yilan",
-          "TW_Hualien"
+          "TW_Zuoying"
         ],
         [
-          "TW_Hualien",
+          "TW_Zuoying",
+          "TW_Pingtung"
+        ],
+        [
+          "TW_Pingtung",
           "TW_Taitung"
         ],
         [
           "TW_Taitung",
-          "TW_Kaohsiung"
+          "TW_Hualien"
         ],
         [
-          "TW_Kaohsiung",
-          "TW_Zuoying"
+          "TW_Hualien",
+          "TW_Yilan"
+        ],
+        [
+          "TW_Yilan",
+          "TW_Keelung"
         ]
       ]
     },
     {
-      "id": "JP_SHINKANSEN",
-      "name": "新幹線全縱貫",
-      "name_en": "Japan Shinkansen Backbone",
-      "color": "#E60012",
+      "id": "JP_TOKAIDO_SANYO_KYUSHU",
+      "name": "東海道・山陽・九州新幹線",
+      "name_en": "Tokaido-Sanyo-Kyushu Shinkansen",
+      "color": "#666666",
       "region": "japan_south",
       "tier": "backbone",
       "path": [
         [
-          "JP_Kagoshima",
-          "JP_Hakata"
-        ],
-        [
-          "JP_Hakata",
-          "JP_Hiroshima"
-        ],
-        [
-          "JP_Hiroshima",
-          "JP_ShinOsaka"
-        ],
-        [
-          "JP_ShinOsaka",
+          "JP_Tokyo",
           "JP_Nagoya"
         ],
         [
           "JP_Nagoya",
-          "JP_Tokyo"
+          "JP_ShinOsaka"
         ],
         [
-          "JP_Tokyo",
+          "JP_ShinOsaka",
+          "JP_Hiroshima"
+        ],
+        [
+          "JP_Hiroshima",
+          "JP_Hakata"
+        ],
+        [
+          "JP_Hakata",
+          "JP_KagoshimaChuo"
+        ]
+      ]
+    },
+    {
+      "id": "JP_TOHOKU_HOKKAIDO",
+      "name": "東北・北海道新幹線",
+      "name_en": "Tohoku-Hokkaido Shinkansen",
+      "color": "#666666",
+      "region": "japan_north",
+      "tier": "backbone",
+      "path": [
+        [
+          "JP_Ueno",
+          "JP_Omiya"
+        ],
+        [
+          "JP_Omiya",
           "JP_Sendai"
         ],
         [
           "JP_Sendai",
+          "JP_Morioka"
+        ],
+        [
+          "JP_Morioka",
           "JP_ShinHakodate"
         ],
         [
@@ -1112,15 +1391,19 @@
       ]
     },
     {
-      "id": "JP_YAMANOTE",
+      "id": "JP_YAMANOTE_LOOP",
       "name": "山手線",
       "name_en": "Yamanote Line",
-      "color": "#00A040",
+      "color": "#99cc00",
       "region": "japan_tokyo",
       "tier": "metro",
       "path": [
         [
           "JP_Ueno",
+          "JP_Akihabara"
+        ],
+        [
+          "JP_Akihabara",
           "JP_Tokyo"
         ],
         [
@@ -1141,43 +1424,55 @@
         ],
         [
           "JP_Ikebukuro",
+          "JP_Nippori"
+        ],
+        [
+          "JP_Nippori",
           "JP_Ueno"
         ]
       ]
     },
     {
-      "id": "JP_MARUNOUCHI",
+      "id": "JP_MARUNOUCHI_LINE",
       "name": "丸之內線",
       "name_en": "Marunouchi Line",
-      "color": "#E60012",
+      "color": "#f30100",
       "region": "japan_tokyo",
       "tier": "metro",
       "path": [
         [
           "JP_Ikebukuro",
-          "JP_Tokyo"
+          "JP_Shinjuku"
         ],
         [
-          "JP_Tokyo",
-          "JP_Shinjuku"
+          "JP_Shinjuku",
+          "JP_Ochanomizu"
+        ],
+        [
+          "JP_Ochanomizu",
+          "JP_Tokyo"
         ]
       ]
     },
     {
-      "id": "JP_TOHOKU_EXT",
-      "name": "東北延伸",
-      "name_en": "Tohoku Extension",
-      "color": "#E60012",
-      "region": "japan_north",
-      "tier": "backbone",
+      "id": "JP_CHUO_LINE",
+      "name": "中央線",
+      "name_en": "Chuo Line",
+      "color": "#f39800",
+      "region": "japan_tokyo",
+      "tier": "metro",
       "path": [
         [
-          "JP_Sendai",
-          "JP_Morioka"
+          "JP_Nakano",
+          "JP_Shinjuku"
         ],
         [
-          "JP_Morioka",
-          "JP_ShinHakodate"
+          "JP_Shinjuku",
+          "JP_Ochanomizu"
+        ],
+        [
+          "JP_Ochanomizu",
+          "JP_Tokyo"
         ]
       ]
     }

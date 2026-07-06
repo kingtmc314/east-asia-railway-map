@@ -1,13 +1,32 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 
-const ZOOM_DETAIL_THRESHOLD = 0.8;
-const DIM_OPACITY = 0.15;
-const HALO = { stroke: '#111115', strokeWidth: 3, paintOrder: 'stroke' };
+const TEXT_HALO = {
+  stroke: '#111115',
+  strokeWidth: 4,
+  strokeLinejoin: 'round',
+  paintOrder: 'stroke',
+};
 
-function label(station, locale) {
+const KEY_STATION_IDS = new Set([
+  'CN_BeijingSouth',
+  'CN_GuangzhouSouth',
+  'CN_NanningEast',
+  'HK_Admiralty',
+  'JP_Tokyo',
+  'JP_Shinjuku',
+]);
+
+const FOCUS_PRESETS = [
+  { id: 'global', labels: { zh: '全圖', en: 'Global' }, regions: [] },
+  { id: 'hongkong', labels: { zh: '香港', en: 'Hong Kong' }, regions: ['hongkong', 'macau', 'china_south'] },
+  { id: 'japan', labels: { zh: '東京 / 日本', en: 'Tokyo / Japan' }, regions: ['japan_tokyo', 'japan_south', 'japan_north'] },
+  { id: 'south_china', labels: { zh: '廣西 / 華南', en: 'Guangxi / South China' }, regions: ['guangxi', 'china_south', 'hongkong', 'macau'] },
+];
+
+function stationLabel(station, locale) {
   return locale === 'en' ? station.name_en || station.name : station.name;
 }
 
@@ -15,115 +34,60 @@ function lineLabel(line, locale) {
   return locale === 'en' ? line.name_en || line.name : line.name;
 }
 
-function regionLabel(region, locale) {
-  return locale === 'en' ? region.name_en || region.name : region.name;
-}
+function getMergedBounds(regions, regionIds) {
+  const targets = regionIds.length > 0 ? regions.filter((region) => regionIds.includes(region.id)) : regions;
+  if (targets.length === 0) return null;
 
-function midpoint(a, b) {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-function orthPath(ax, ay, bx, by) {
-  if (ax === bx || ay === by) return `M ${ax} ${ay} L ${bx} ${by}`;
-  const mx = (ax + bx) / 2;
-  return `M ${ax} ${ay} L ${mx} ${ay} L ${mx} ${by} L ${bx} ${by}`;
-}
-
-function buildSegmentPaths(line, stationMap) {
-  return line.path
-    .map(([fromId, toId]) => {
-      const a = stationMap.get(fromId);
-      const b = stationMap.get(toId);
-      if (!a || !b) return null;
-      return {
-        d: orthPath(a.x, a.y, b.x, b.y),
-        mid: midpoint(a, b),
-        fromId,
-        toId,
-      };
-    })
-    .filter(Boolean);
-}
-
-function StationNode({ station, locale, opacity, onClick, showLabel }) {
-  const { x, y, type, tier } = station;
-  const isInterchange = type === 'interchange';
-  const isGateway = type === 'gateway';
-  const isHub = tier === 'hub' || tier === 'major';
-  const r = isHub ? 10 : isInterchange ? 8 : 5;
-
-  if (isInterchange) {
-    return (
-      <g opacity={opacity} style={{ cursor: 'pointer' }} onClick={() => onClick(station)}>
-        <rect
-          x={x - r - 2}
-          y={y - r / 2 - 2}
-          width={(r + 2) * 2}
-          height={r + 4}
-          rx={r}
-          fill="#1a1a22"
-          stroke="#f8fafc"
-          strokeWidth={2}
-        />
-        <circle cx={x} cy={y} r={r * 0.45} fill="#0a0a0f" stroke="#f8fafc" strokeWidth={1.5} />
-        {showLabel && (
-          <text x={x} y={y - r - 8} textAnchor="middle" fill="#f8fafc" fontSize={13} fontWeight={600} {...HALO}>
-            {label(station, locale)}
-          </text>
-        )}
-      </g>
-    );
-  }
-
-  return (
-    <g opacity={opacity} style={{ cursor: 'pointer' }} onClick={() => onClick(station)}>
-      {isGateway && (
-        <circle cx={x} cy={y} r={r + 6} fill="none" stroke="#FFD700" strokeWidth={2} className="gateway-ring" />
-      )}
-      <circle
-        cx={x}
-        cy={y}
-        r={r}
-        fill={isGateway ? '#FFD700' : isHub ? '#f8fafc' : '#94a3b8'}
-        stroke="#111115"
-        strokeWidth={2}
-      />
-      {isHub && <circle cx={x} cy={y} r={r * 0.4} fill="#0a0a0f" />}
-      {showLabel && (
-        <text
-          x={x}
-          y={y - r - (isHub ? 10 : 6)}
-          textAnchor="middle"
-          fill="#f8fafc"
-          fontSize={isHub ? 14 : 11}
-          fontWeight={isHub ? 700 : 500}
-          {...HALO}
-        >
-          {label(station, locale)}
-        </text>
-      )}
-    </g>
+  return targets.reduce(
+    (acc, region) => ({
+      minX: Math.min(acc.minX, region.bounds.minX),
+      minY: Math.min(acc.minY, region.bounds.minY),
+      maxX: Math.max(acc.maxX, region.bounds.maxX),
+      maxY: Math.max(acc.maxY, region.bounds.maxY),
+    }),
+    { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
   );
 }
 
-function GatewayBadge({ station, locale, onFocus }) {
+function getStationOpacity(station, focusedRegions) {
+  if (!focusedRegions || focusedRegions.size === 0) return 1;
+  return focusedRegions.has(station.region) ? 1 : 0.15;
+}
+
+function getLineOpacity(line, focusedRegions) {
+  if (!focusedRegions || focusedRegions.size === 0) return 1;
+  return focusedRegions.has(line.region) ? 1 : 0.15;
+}
+
+function getLineStrokeWidth(line) {
+  if (line.tier === 'crossborder') return 8;
+  if (line.tier === 'backbone') return 6;
+  if (line.tier === 'metro') return 4;
+  return 3;
+}
+
+function GatewayIndicator({ station, locale, opacity, onJump, fontSize }) {
   if (!station.gateway) return null;
-  const { x, y } = station;
+
   const text = locale === 'en' ? station.gateway.label_en : station.gateway.label_zh;
+  const width = Math.max(220, text.length * Math.max(8.6, fontSize * 0.56) + 60);
+  const x = station.x + 26;
+  const y = station.y - 24;
 
   return (
     <g
-      className="gateway-badge"
-      transform={`translate(${x + 18}, ${y - 12})`}
+      transform={`translate(${x}, ${y})`}
+      opacity={opacity}
       style={{ cursor: 'pointer' }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onFocus(station.gateway.targetRegion);
+      onClick={(event) => {
+        event.stopPropagation();
+        onJump(station.gateway.targetRegion);
       }}
     >
-      <rect x={0} y={-14} width={text.length * 7.5 + 24} height={28} rx={14} fill="#1c1910" stroke="#FFD700" strokeWidth={1.5} />
-      <polygon className="gateway-pulse-arrow" points="8,0 16,-5 16,5" fill="#FFD700" />
-      <text x={20} y={5} fill="#FFD700" fontSize={12} fontWeight={600} {...HALO}>
+      <circle className="gateway-pulse-ring" cx={20} cy={20} r={20} />
+      <polygon className="gateway-pulse-arrow" points="6,20 26,10 26,30" />
+      <rect x={34} y={2} width={width} height={36} rx={18} fill="#1e1b0f" stroke="#ffd43b" strokeWidth={2.2} />
+      <text x={52} y={26} fill="#ffe066" fontSize={Math.max(14, fontSize * 0.82)} fontWeight={800} {...TEXT_HALO}>
         {text}
       </text>
     </g>
@@ -133,298 +97,402 @@ function GatewayBadge({ station, locale, onFocus }) {
 export default function RailwayMap() {
   const transformRef = useRef(null);
   const containerRef = useRef(null);
+
   const [topology, setTopology] = useState(null);
   const [locale, setLocale] = useState('zh');
-  const [scale, setScale] = useState(0.12);
-  const [focusRegion, setFocusRegion] = useState(null);
-  const [viewport, setViewport] = useState({ w: 1200, h: 800 });
+  const [currentScale, setCurrentScale] = useState(0.12);
+  const [focusPresetId, setFocusPresetId] = useState('global');
+  const [hoveredStationId, setHoveredStationId] = useState(null);
+  const [viewport, setViewport] = useState({ width: 1280, height: 820 });
 
   useEffect(() => {
+    let cancelled = false;
     fetch('/data/railway_topology.json')
-      .then((r) => r.json())
-      .then(setTopology)
-      .catch((err) => console.error('Failed to load topology:', err));
+      .then((response) => response.json())
+      .then((json) => {
+        if (!cancelled) setTopology(json);
+      })
+      .catch((error) => {
+        console.error('[RailwayMap] Failed to load topology', error);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return undefined;
-    const ro = new ResizeObserver(([entry]) => {
-      setViewport({ w: entry.contentRect.width, h: entry.contentRect.height });
+    const element = containerRef.current;
+    if (!element) return undefined;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      setViewport({ width: entry.contentRect.width, height: entry.contentRect.height });
     });
-    ro.observe(el);
-    return () => ro.disconnect();
+    observer.observe(element);
+
+    return () => observer.disconnect();
   }, []);
 
   const stationMap = useMemo(() => {
     if (!topology) return new Map();
-    return new Map(topology.stations.map((s) => [s.id, s]));
+    return new Map(topology.stations.map((station) => [station.id, station]));
   }, [topology]);
 
-  const regionMap = useMemo(() => {
-    if (!topology) return new Map();
-    return new Map(topology.regions.map((r) => [r.id, r]));
-  }, [topology]);
+  const focusPreset = useMemo(
+    () => FOCUS_PRESETS.find((preset) => preset.id === focusPresetId) || FOCUS_PRESETS[0],
+    [focusPresetId],
+  );
 
-  const isDetailView = scale >= ZOOM_DETAIL_THRESHOLD || focusRegion !== null;
+  const focusedRegions = useMemo(
+    () => (focusPreset.regions.length ? new Set(focusPreset.regions) : null),
+    [focusPreset.regions],
+  );
 
-  const stationVisible = useCallback(
-    (station) => {
-      if (!isDetailView) {
-        return station.tier === 'hub' || station.type === 'gateway';
+  const lineGeometry = useMemo(() => {
+    if (!topology) return [];
+
+    return topology.lines.map((line) => {
+      const segments = line.path
+        .map(([fromId, toId]) => {
+          const fromStation = stationMap.get(fromId);
+          const toStation = stationMap.get(toId);
+          if (!fromStation || !toStation) return null;
+
+          return {
+            x1: fromStation.x,
+            y1: fromStation.y,
+            x2: toStation.x,
+            y2: toStation.y,
+            midX: (fromStation.x + toStation.x) / 2,
+            midY: (fromStation.y + toStation.y) / 2,
+          };
+        })
+        .filter(Boolean);
+
+      const labelIndex = Math.floor(Math.max(0, segments.length - 1) / 2);
+      const labelAnchor = segments[labelIndex] || null;
+
+      return { line, segments, labelAnchor };
+    });
+  }, [topology, stationMap]);
+
+  const isDetailView = currentScale >= 0.85 || focusPresetId !== 'global';
+  const scalableFontSize = Math.max(14, 24 / currentScale);
+  const hubLabelSize = scalableFontSize + 4;
+  const lineLabelSize = Math.max(14, 22 / currentScale);
+
+  const visibleStations = useMemo(() => {
+    if (!topology) return [];
+    return topology.stations.filter((station) => {
+      if (isDetailView) return true;
+      return station.tier === 'hub' || station.tier === 'major' || station.type === 'gateway' || KEY_STATION_IDS.has(station.id);
+    });
+  }, [topology, isDetailView]);
+
+  const flyToRegionSet = useCallback(
+    (regionIds, presetId) => {
+      if (!topology || !transformRef.current) return;
+
+      if (presetId === 'global') {
+        setFocusPresetId('global');
+        transformRef.current.resetTransform(420);
+        return;
       }
-      if (focusRegion) return station.region === focusRegion || station.type === 'gateway';
-      return true;
+
+      const merged = getMergedBounds(topology.regions, regionIds);
+      if (!merged) return;
+
+      const contentWidth = merged.maxX - merged.minX;
+      const contentHeight = merged.maxY - merged.minY;
+      const centerX = (merged.minX + merged.maxX) / 2;
+      const centerY = (merged.minY + merged.maxY) / 2;
+      const padding = 1.22;
+      const targetScale = Math.min(
+        viewport.width / (contentWidth * padding),
+        viewport.height / (contentHeight * padding),
+      );
+      const clampedScale = Math.max(0.08, Math.min(3.2, targetScale));
+      const targetX = viewport.width / 2 - centerX * clampedScale;
+      const targetY = viewport.height / 2 - centerY * clampedScale;
+
+      setFocusPresetId(presetId);
+      transformRef.current.setTransform(targetX, targetY, clampedScale, 520);
     },
-    [isDetailView, focusRegion],
+    [topology, viewport.height, viewport.width],
   );
 
-  const lineVisible = useCallback(
-    (line) => {
-      if (!isDetailView) return line.tier === 'backbone' || line.tier === 'crossborder';
-      if (focusRegion) return line.region === focusRegion || line.tier === 'crossborder';
-      return true;
+  const handleGatewayJump = useCallback(
+    (targetRegion) => {
+      const presetForRegion = FOCUS_PRESETS.find((preset) => preset.regions.includes(targetRegion));
+      if (presetForRegion) {
+        flyToRegionSet(presetForRegion.regions, presetForRegion.id);
+        return;
+      }
+      flyToRegionSet([targetRegion], targetRegion);
     },
-    [isDetailView, focusRegion],
+    [flyToRegionSet],
   );
-
-  const regionOpacity = useCallback(
-    (regionId) => {
-      if (!focusRegion || focusRegion === regionId) return 1;
-      return DIM_OPACITY;
-    },
-    [focusRegion],
-  );
-
-  const focusOnRegion = useCallback(
-    (regionId) => {
-      const region = regionMap.get(regionId);
-      if (!region || !transformRef.current || !topology) return;
-
-      setFocusRegion(regionId);
-      const { minX, minY, maxX, maxY } = region.bounds;
-      const rw = maxX - minX;
-      const rh = maxY - minY;
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2;
-      const padding = 1.15;
-      const targetScale = Math.min(viewport.w / (rw * padding), viewport.h / (rh * padding));
-      const clamped = Math.max(0.15, Math.min(2.5, targetScale));
-      const posX = viewport.w / 2 - cx * clamped;
-      const posY = viewport.h / 2 - cy * clamped;
-      transformRef.current.setTransform(posX, posY, clamped, 400);
-    },
-    [regionMap, topology, viewport],
-  );
-
-  const resetView = useCallback(() => {
-    setFocusRegion(null);
-    transformRef.current?.resetTransform(400);
-  }, []);
 
   /**
-   * Future Interceptor — station click handler
-   * -------------------------------------------------------
-   * This hook point is reserved for advanced passenger-facing features:
-   *   1. Slide-over panel with station metadata (lines, region, interchange graph)
-   *   2. Per-country timetable API (CN 12306, JP JR, TW THSR, HK MTR) via edge functions
-   *   3. Transfer flow visualisation — highlight connecting lines & walking interchanges
-   *   4. Deep-link to /station/[id] for shareable views
-   * Mount a <StationDetailDrawer station={station} onClose={...} /> here when ready.
+   * Future Interceptor: station node interaction bridge.
+   * ----------------------------------------------------
+   * This handler is intentionally designed as a stable extension point so the next
+   * phase can plug in passenger-grade interactions without rewriting the map layer.
+   *
+   * Planned integrations:
+   * 1) Open station detail drawer: operating agencies, platform topology, exits.
+   * 2) Query timetable APIs (MTR/JR/CR/THSR) and render near-real-time departures.
+   * 3) Compute transfer walk paths + inter-line flow overlays across the same canvas.
+   * 4) Attach station-level ridership and operation metrics panel for analytics mode.
    */
-  const handleStationClick = useCallback((station) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.info('[RailwayMap] station intercept:', station.id, station.name);
-    }
-    focusOnRegion(station.region);
-  }, [focusOnRegion]);
-
-  const lineGeometries = useMemo(() => {
-    if (!topology) return [];
-    return topology.lines
-      .filter(lineVisible)
-      .map((line) => ({
-        line,
-        segments: buildSegmentPaths(line, stationMap),
-        opacity: regionOpacity(line.region),
-      }));
-  }, [topology, lineVisible, stationMap, regionOpacity]);
-
-  const gatewayStations = useMemo(
-    () => (topology ? topology.stations.filter((s) => s.gateway) : []),
-    [topology],
+  const handleStationClick = useCallback(
+    (station) => {
+      if (station.gateway?.targetRegion) {
+        handleGatewayJump(station.gateway.targetRegion);
+      }
+      if (process.env.NODE_ENV === 'development') {
+        console.info('[RailwayMap] Station clicked:', station.id, station.name);
+      }
+    },
+    [handleGatewayJump],
   );
 
   if (!topology) {
     return (
-      <div ref={containerRef} className="flex h-full w-full items-center justify-center bg-[#0a0a0f] text-slate-400">
-        載入東亞鐵路拓撲矩陣…
+      <div ref={containerRef} className="flex h-full w-full items-center justify-center bg-[#090b11] text-slate-300">
+        正在載入官方拓撲示意圖...
       </div>
     );
   }
 
   const { canvas } = topology;
-  const vbW = canvas.maxX - canvas.minX;
-  const vbH = canvas.maxY - canvas.minY;
+  const viewBoxWidth = canvas.maxX - canvas.minX;
+  const viewBoxHeight = canvas.maxY - canvas.minY;
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[#0a0a0f]">
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[#090b11]">
       <style>{`
-        @keyframes gateway-pulse {
-          0%, 100% { opacity: 1; transform: translateX(0); }
-          50% { opacity: 0.45; transform: translateX(4px); }
+        @keyframes gatewayPulse {
+          0% { transform: scale(0.9); opacity: 0.9; }
+          70% { transform: scale(1.22); opacity: 0.18; }
+          100% { transform: scale(1.35); opacity: 0; }
         }
-        @keyframes gateway-ring-pulse {
-          0%, 100% { opacity: 0.9; r: 16; }
-          50% { opacity: 0.35; }
+        @keyframes gatewayArrow {
+          0%, 100% { transform: translateX(0); opacity: 1; }
+          50% { transform: translateX(6px); opacity: 0.55; }
         }
-        .gateway-pulse-arrow { animation: gateway-pulse 1.6s ease-in-out infinite; }
-        .gateway-badge:hover rect { filter: brightness(1.25); }
-        .gateway-ring { animation: gateway-ring-pulse 2s ease-in-out infinite; }
+        .gateway-pulse-ring {
+          fill: rgba(255, 212, 59, 0.25);
+          stroke: #ffd43b;
+          stroke-width: 1.6;
+          transform-origin: center;
+          animation: gatewayPulse 2s ease-out infinite;
+        }
+        .gateway-pulse-arrow {
+          fill: #ffd43b;
+          transform-origin: center;
+          animation: gatewayArrow 1.35s ease-in-out infinite;
+        }
       `}</style>
 
-      {/* Top bar */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between p-3">
-        <div className="pointer-events-auto rounded-lg border border-slate-700/80 bg-[#111115]/90 px-4 py-2 backdrop-blur-sm">
-          <h1 className="text-sm font-bold text-slate-100">
-            {locale === 'en' ? 'East Asia Railway Grid' : '東亞鐵路非比例拓撲矩陣'}
-          </h1>
-          <p className="text-xs text-slate-400">
-            {locale === 'en'
-              ? `${topology.stations.length} stations · ${topology.lines.length} lines`
-              : `${topology.stations.length} 站 · ${topology.lines.length} 線`}
+      <div className="pointer-events-none absolute left-3 top-3 z-20 flex w-[236px] flex-col gap-2 rounded-xl border border-slate-700/80 bg-[#121826]/88 p-3 shadow-lg backdrop-blur-sm">
+        <div className="pointer-events-auto">
+          <h2 className="text-sm font-extrabold text-slate-100">
+            {locale === 'zh' ? '東亞官方經典鐵路圖' : 'East Asia Official Railway Schematic'}
+          </h2>
+          <p className="text-[11px] text-slate-400">
+            {locale === 'zh'
+              ? '點選聚焦區域，非焦點路網保持暗色連續顯示'
+              : 'Focus a region while keeping the entire network connected in dim context'}
           </p>
         </div>
 
-        <div className="pointer-events-auto flex gap-2">
-          <button
-            type="button"
-            onClick={() => setLocale((l) => (l === 'zh' ? 'en' : 'zh'))}
-            className="rounded-md border border-slate-600 bg-[#111115]/90 px-3 py-1.5 text-xs font-semibold text-slate-200 backdrop-blur-sm hover:border-amber-400 hover:text-amber-300"
-          >
-            {locale === 'zh' ? '繁中 / EN' : 'EN / 繁中'}
-          </button>
-          <button
-            type="button"
-            onClick={resetView}
-            className="rounded-md border border-slate-600 bg-[#111115]/90 px-3 py-1.5 text-xs text-slate-300 backdrop-blur-sm hover:border-slate-400"
-          >
-            {locale === 'en' ? 'Reset view' : '全圖重置'}
-          </button>
+        <div className="pointer-events-auto flex flex-col gap-1.5">
+          {FOCUS_PRESETS.map((preset) => {
+            const active = focusPresetId === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => flyToRegionSet(preset.regions, preset.id)}
+                className={`rounded-md border px-3 py-1.5 text-left text-xs font-semibold transition ${
+                  active
+                    ? 'border-yellow-300 bg-yellow-400/20 text-yellow-100'
+                    : 'border-slate-600 bg-slate-900/55 text-slate-200 hover:border-slate-400'
+                }`}
+              >
+                {preset.labels[locale]}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Region focus chips */}
-      <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-20 flex flex-wrap justify-center gap-1.5">
-        {topology.regions.map((region) => (
-          <button
-            key={region.id}
-            type="button"
-            onClick={() => focusOnRegion(region.id)}
-            className={`pointer-events-auto rounded-full border px-2.5 py-1 text-[11px] font-medium backdrop-blur-sm transition ${
-              focusRegion === region.id
-                ? 'border-amber-400 bg-amber-400/20 text-amber-200'
-                : 'border-slate-600 bg-[#111115]/85 text-slate-300 hover:border-slate-400'
-            }`}
-          >
-            {regionLabel(region, locale)}
-          </button>
-        ))}
+      <div className="pointer-events-none absolute right-3 top-3 z-20 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setLocale((prev) => (prev === 'zh' ? 'en' : 'zh'))}
+          className="pointer-events-auto rounded-md border border-slate-600 bg-[#121826]/88 px-3 py-1.5 text-xs font-bold text-slate-100 backdrop-blur-sm hover:border-yellow-300"
+        >
+          {locale === 'zh' ? '繁中 / EN' : 'EN / 繁中'}
+        </button>
       </div>
 
-      {/* Zoom hint */}
-      <div className="pointer-events-none absolute bottom-14 right-3 z-20 rounded border border-slate-700/60 bg-[#111115]/75 px-2 py-1 text-[10px] text-slate-500">
-        {isDetailView
-          ? locale === 'en'
-            ? 'Detail layer active'
-            : '細節圖層已啟用'
-          : locale === 'en'
-            ? 'Overview — zoom in for metro'
-            : '全景 — 放大顯示地鐵網'}
-        {' · '}
-        {(scale * 100).toFixed(0)}%
+      <div className="pointer-events-none absolute bottom-4 right-4 z-20 rounded-md border border-slate-700/70 bg-[#121826]/80 px-2 py-1 text-[11px] text-slate-300 backdrop-blur-sm">
+        {locale === 'zh' ? '縮放倍率' : 'Zoom'} {(currentScale * 100).toFixed(0)}%
       </div>
 
       <TransformWrapper
         ref={transformRef}
         initialScale={0.12}
-        minScale={0.04}
+        minScale={0.05}
         maxScale={4}
         limitToBounds={false}
         centerOnInit
-        wheel={{ step: 0.08 }}
-        pinch={{ step: 5 }}
-        onTransformed={(_ref, state) => setScale(state.scale)}
+        wheel={{ step: 0.07 }}
+        pinch={{ step: 6 }}
+        doubleClick={{ disabled: true }}
+        onTransformed={(_instance, state) => setCurrentScale(state.scale)}
       >
-        <TransformComponent
-          wrapperClass="!h-full !w-full"
-          contentClass="!h-full !w-full"
-        >
-          <svg
-            viewBox={`${canvas.minX} ${canvas.minY} ${vbW} ${vbH}`}
-            className="h-full w-full"
-            style={{ touchAction: 'none' }}
-          >
-            <rect x={canvas.minX} y={canvas.minY} width={vbW} height={vbH} fill="#0a0a0f" />
+        <TransformComponent wrapperClass="!h-full !w-full" contentClass="!h-full !w-full">
+          <svg viewBox={`${canvas.minX} ${canvas.minY} ${viewBoxWidth} ${viewBoxHeight}`} className="h-full w-full">
+            <rect x={canvas.minX} y={canvas.minY} width={viewBoxWidth} height={viewBoxHeight} fill="#090b11" />
 
-            {/* Lines */}
-            <g id="railway-lines">
-              {lineGeometries.map(({ line, segments, opacity }) =>
-                segments.map((seg, i) => (
-                  <g key={`${line.id}-${i}`} opacity={opacity}>
-                    <path
-                      d={seg.d}
-                      fill="none"
-                      stroke={line.color}
-                      strokeWidth={line.tier === 'backbone' ? 5 : line.tier === 'crossborder' ? 4 : 3}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      opacity={line.tier === 'metro' ? 0.85 : 1}
-                    />
-                    {i === 0 && isDetailView && (
+            <g id="rail-lines">
+              {lineGeometry.map(({ line, segments, labelAnchor }) => {
+                const opacity = getLineOpacity(line, focusedRegions);
+                const showLineLabel = isDetailView || line.tier === 'backbone' || line.tier === 'crossborder';
+
+                return (
+                  <g key={line.id} opacity={opacity}>
+                    {segments.map((segment, index) => (
+                      <line
+                        key={`${line.id}-${index}`}
+                        x1={segment.x1}
+                        y1={segment.y1}
+                        x2={segment.x2}
+                        y2={segment.y2}
+                        stroke={line.color}
+                        strokeWidth={getLineStrokeWidth(line)}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+                    {showLineLabel && labelAnchor && (
                       <text
-                        x={seg.mid.x}
-                        y={seg.mid.y - 10}
-                        textAnchor="middle"
+                        x={labelAnchor.midX}
+                        y={labelAnchor.midY - 14}
                         fill={line.color}
-                        fontSize={12}
-                        fontWeight={600}
-                        {...HALO}
+                        textAnchor="middle"
+                        fontSize={lineLabelSize}
+                        fontWeight={800}
+                        {...TEXT_HALO}
                       >
                         {lineLabel(line, locale)}
                       </text>
                     )}
                   </g>
-                )),
-              )}
+                );
+              })}
             </g>
 
-            {/* Stations */}
-            <g id="railway-stations">
-              {topology.stations
-                .filter(stationVisible)
-                .map((station) => (
-                  <StationNode
+            <g id="station-nodes">
+              {visibleStations.map((station) => {
+                const opacity = getStationOpacity(station, focusedRegions);
+                const isHub = station.tier === 'hub' || station.tier === 'major' || KEY_STATION_IDS.has(station.id);
+                const showLabel = isHub || isDetailView;
+                const hover = hoveredStationId === station.id;
+                const baseRadius = isHub ? 11 : 7;
+                const radius = hover ? baseRadius + 1.5 : baseRadius;
+
+                return (
+                  <g
                     key={station.id}
+                    opacity={opacity}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => handleStationClick(station)}
+                    onMouseEnter={() => setHoveredStationId(station.id)}
+                    onMouseLeave={() => setHoveredStationId(null)}
+                  >
+                    {station.marker === 'capsule' && (
+                      <>
+                        <rect
+                          x={station.x - radius * 1.6}
+                          y={station.y - radius * 0.72}
+                          width={radius * 3.2}
+                          height={radius * 1.45}
+                          rx={radius * 0.82}
+                          fill="#ffffff"
+                          stroke="#121826"
+                          strokeWidth={2.4}
+                        />
+                        <line
+                          x1={station.x - radius * 0.95}
+                          y1={station.y}
+                          x2={station.x + radius * 0.95}
+                          y2={station.y}
+                          stroke="#121826"
+                          strokeWidth={1.6}
+                        />
+                      </>
+                    )}
+
+                    {station.marker === 'red_ring' && (
+                      <>
+                        <circle cx={station.x} cy={station.y} r={radius + 5} fill="#ffffff" stroke="#d90429" strokeWidth={4} />
+                        <circle cx={station.x} cy={station.y} r={radius - 1} fill="#ffffff" stroke="#121826" strokeWidth={2.2} />
+                        <circle cx={station.x} cy={station.y} r={radius * 0.34} fill="#111115" />
+                      </>
+                    )}
+
+                    {!station.marker && (
+                      <circle cx={station.x} cy={station.y} r={radius} fill="#ffffff" stroke="#121826" strokeWidth={2.2} />
+                    )}
+
+                    {station.type === 'gateway' && (
+                      <circle
+                        cx={station.x}
+                        cy={station.y}
+                        r={radius + 9}
+                        fill="none"
+                        stroke="#ffd43b"
+                        strokeWidth={2}
+                        strokeDasharray="4 6"
+                      />
+                    )}
+
+                    {showLabel && (
+                      <text
+                        x={station.x}
+                        y={station.y - (isHub ? 18 : 14)}
+                        textAnchor="middle"
+                        fill="#f8fafc"
+                        fontSize={isHub ? hubLabelSize : scalableFontSize}
+                        fontWeight={isHub ? 900 : 750}
+                        {...TEXT_HALO}
+                      >
+                        {stationLabel(station, locale)}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+
+            <g id="gateway-indicators">
+              {topology.stations
+                .filter((station) => station.gateway)
+                .map((station) => (
+                  <GatewayIndicator
+                    key={`gateway-${station.id}`}
                     station={station}
                     locale={locale}
-                    opacity={regionOpacity(station.region)}
-                    onClick={handleStationClick}
-                    showLabel={isDetailView || station.tier === 'hub'}
+                    opacity={getStationOpacity(station, focusedRegions)}
+                    onJump={handleGatewayJump}
+                    fontSize={scalableFontSize}
                   />
                 ))}
-            </g>
-
-            {/* Gateway extension indicators */}
-            <g id="gateway-indicators">
-              {gatewayStations.map((station) => (
-                <GatewayBadge
-                  key={`gw-${station.id}`}
-                  station={station}
-                  locale={locale}
-                  onFocus={focusOnRegion}
-                />
-              ))}
             </g>
           </svg>
         </TransformComponent>
