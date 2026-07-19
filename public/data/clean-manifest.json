@@ -1,12 +1,12 @@
 {
   "version": 7,
-  "updated": "2026-07-12T05:00:02.423Z",
+  "updated": "2026-07-19T05:04:58.474Z",
   "files": [
     {
       "region": "hongkong",
       "macro": "hongkong",
       "file": "/data/hongkong_clean.json",
-      "bytes": 1220755,
+      "bytes": 1220813,
       "lines": 1300,
       "stations": 250
     },
@@ -22,25 +22,25 @@
       "region": "taiwan",
       "macro": "taiwan",
       "file": "/data/taiwan_clean.json",
-      "bytes": 3039775,
-      "lines": 4080,
-      "stations": 583
+      "bytes": 3005177,
+      "lines": 4065,
+      "stations": 558
     },
     {
       "region": "china-anhui",
       "macro": "china",
       "file": "/data/clean/china-anhui.json",
-      "bytes": 11680255,
-      "lines": 16872,
-      "stations": 2007
+      "bytes": 11429277,
+      "lines": 16489,
+      "stations": 2011
     },
     {
       "region": "china-beijing",
       "macro": "china",
       "file": "/data/clean/china-beijing.json",
-      "bytes": 4309439,
-      "lines": 6515,
-      "stations": 688
+      "bytes": 4280805,
+      "lines": 6468,
+      "stations": 686
     },
     {
       "region": "china-chongqing",
@@ -62,8 +62,8 @@
       "region": "china-gansu",
       "macro": "china",
       "file": "/data/clean/china-gansu.json",
-      "bytes": 12967825,
-      "lines": 19871,
+      "bytes": 12967189,
+      "lines": 19870,
       "stations": 1328
     },
     {
@@ -94,15 +94,15 @@
       "region": "china-hainan",
       "macro": "china",
       "file": "/data/clean/china-hainan.json",
-      "bytes": 905889,
-      "lines": 1574,
+      "bytes": 913609,
+      "lines": 1588,
       "stations": 53
     },
     {
       "region": "china-hebei-north",
       "macro": "china",
       "file": "/data/clean/china-hebei-north.json",
-      "bytes": 11152003,
+      "bytes": 11151999,
       "lines": 17237,
       "stations": 1332
     },
@@ -110,31 +110,31 @@
       "region": "china-hebei-south",
       "macro": "china",
       "file": "/data/clean/china-hebei-south.json",
-      "bytes": 3786921,
-      "lines": 5563,
+      "bytes": 3787449,
+      "lines": 5564,
       "stations": 332
     },
     {
       "region": "china-heilongjiang",
       "macro": "china",
       "file": "/data/clean/china-heilongjiang.json",
-      "bytes": 8556338,
-      "lines": 13178,
+      "bytes": 8669660,
+      "lines": 13204,
       "stations": 1465
     },
     {
       "region": "china-henan",
       "macro": "china",
       "file": "/data/clean/china-henan.json",
-      "bytes": 9725525,
-      "lines": 14488,
+      "bytes": 9703523,
+      "lines": 14455,
       "stations": 1017
     },
     {
       "region": "china-hubei",
       "macro": "china",
       "file": "/data/clean/china-hubei.json",
-      "bytes": 11018845,
+      "bytes": 11018891,
       "lines": 16631,
       "stations": 1060
     },
@@ -150,8 +150,8 @@
       "region": "china-inner-mongolia-central",
       "macro": "china",
       "file": "/data/clean/china-inner-mongolia-central.json",
-      "bytes": 1931636,
-      "lines": 3125,
+      "bytes": 1990330,
+      "lines": 3220,
       "stations": 195
     },
     {
@@ -182,55 +182,55 @@
       "region": "china-inner-mongolia-west",
       "macro": "china",
       "file": "/data/clean/china-inner-mongolia-west.json",
-      "bytes": 7780530,
-      "lines": 12561,
+      "bytes": 7787342,
+      "lines": 12571,
       "stations": 788
     },
     {
       "region": "china-jiangsu",
       "macro": "china",
       "file": "/data/clean/china-jiangsu.json",
-      "bytes": 11428865,
-      "lines": 16108,
-      "stations": 2421
+      "bytes": 11531129,
+      "lines": 16264,
+      "stations": 2420
     },
     {
       "region": "china-jiangxi",
       "macro": "china",
       "file": "/data/clean/china-jiangxi.json",
-      "bytes": 11750261,
-      "lines": 17262,
+      "bytes": 11750459,
+      "lines": 17263,
       "stations": 1014
     },
     {
       "region": "china-jilin",
       "macro": "china",
       "file": "/data/clean/china-jilin.json",
-      "bytes": 9825709,
-      "lines": 15265,
+      "bytes": 9861939,
+      "lines": 15332,
       "stations": 1633
     },
     {
       "region": "china-liaoning",
       "macro": "china",
       "file": "/data/clean/china-liaoning.json",
-      "bytes": 7831180,
-      "lines": 12216,
-      "stations": 1156
+      "bytes": 7828612,
+      "lines": 12212,
+      "stations": 1155
     },
     {
       "region": "china-ningxia",
       "macro": "china",
       "file": "/data/clean/china-ningxia.json",
-      "bytes": 2401659,
-      "lines": 3869,
-      "stations": 228
+      "bytes": 2446061,
+      "lines": 3938,
+      "stations": 229
     },
     {
       "region": "china-qinghai",
       "macro": "china",
       "file": "/data/clean/china-qinghai.json",
-      "bytes": 2815023,
+      "bytes": 2815039,
       "lines": 4311,
       "stations": 276
     },
@@ -238,80 +238,80 @@
       "region": "china-shaanxi",
       "macro": "china",
       "file": "/data/clean/china-shaanxi.json",
-      "bytes": 12440707,
-      "lines": 19275,
+      "bytes": 12438485,
+      "lines": 19272,
       "stations": 1149
     },
     {
       "region": "china-shandong",
       "macro": "china",
       "file": "/data/clean/china-shandong.json",
-      "bytes": 11436996,
-      "lines": 17437,
+      "bytes": 11438380,
+      "lines": 17439,
       "stations": 1102
     },
     {
       "region": "china-shanghai",
       "macro": "china",
       "file": "/data/clean/china-shanghai.json",
-      "bytes": 2170416,
-      "lines": 2706,
-      "stations": 805
+      "bytes": 2162880,
+      "lines": 2704,
+      "stations": 792
     },
     {
       "region": "china-shanxi",
       "macro": "china",
       "file": "/data/clean/china-shanxi.json",
-      "bytes": 10615112,
-      "lines": 16261,
-      "stations": 1176
+      "bytes": 10528296,
+      "lines": 16122,
+      "stations": 1172
     },
     {
       "region": "china-sichuan",
       "macro": "china",
       "file": "/data/clean/china-sichuan.json",
-      "bytes": 21727461,
-      "lines": 32321,
+      "bytes": 21792819,
+      "lines": 32448,
       "stations": 2018
     },
     {
       "region": "china-tianjin",
       "macro": "china",
       "file": "/data/clean/china-tianjin.json",
-      "bytes": 4083655,
-      "lines": 6249,
-      "stations": 498
+      "bytes": 4084141,
+      "lines": 6243,
+      "stations": 507
     },
     {
       "region": "china-tibet",
       "macro": "china",
       "file": "/data/clean/china-tibet.json",
-      "bytes": 2644517,
-      "lines": 3595,
-      "stations": 992
+      "bytes": 2646973,
+      "lines": 3597,
+      "stations": 995
     },
     {
       "region": "china-xinjiang",
       "macro": "china",
       "file": "/data/clean/china-xinjiang.json",
-      "bytes": 6105664,
-      "lines": 9379,
-      "stations": 848
+      "bytes": 6099114,
+      "lines": 9370,
+      "stations": 846
     },
     {
       "region": "china-yunnan",
       "macro": "china",
       "file": "/data/clean/china-yunnan.json",
-      "bytes": 11451894,
-      "lines": 16941,
-      "stations": 1024
+      "bytes": 11246138,
+      "lines": 16561,
+      "stations": 1022
     },
     {
       "region": "china-zhejiang",
       "macro": "china",
       "file": "/data/clean/china-zhejiang.json",
-      "bytes": 10614702,
-      "lines": 14628,
+      "bytes": 10627840,
+      "lines": 14649,
       "stations": 1870
     },
     {
@@ -334,9 +334,9 @@
       "region": "japan-kanto-chubu",
       "macro": "japan",
       "file": "/data/clean/japan-kanto-chubu.json",
-      "bytes": 29904019,
-      "lines": 40323,
-      "stations": 4465
+      "bytes": 29910793,
+      "lines": 40327,
+      "stations": 4475
     },
     {
       "region": "japan-kyushu-okinawa",
@@ -350,16 +350,16 @@
       "region": "japan-shikoku",
       "macro": "japan",
       "file": "/data/clean/japan-shikoku.json",
-      "bytes": 13929821,
-      "lines": 18565,
+      "bytes": 13939709,
+      "lines": 18580,
       "stations": 2255
     },
     {
       "region": "japan-tohoku",
       "macro": "japan",
       "file": "/data/clean/japan-tohoku.json",
-      "bytes": 11962716,
-      "lines": 16545,
+      "bytes": 12026340,
+      "lines": 16599,
       "stations": 1974
     }
   ]
